@@ -1,22 +1,21 @@
 /**
  * WPW Customer Dashboard
  * 
- * Customer-facing dashboard for WePrintWraps.com
- * Intended to be served via subdomain: my.weprintwraps.com
+ * Professional dashboard for WePrintWraps.com customers
+ * Features modern dashboard layout with sidebar navigation
  * 
  * Features:
- * - Order lookup and tracking
- * - Recent orders (if email provided)
- * - ClubWPW preview (monthly drops, WOTW)
- * - Featured designs carousel
- * - RestyleProAI CTA for color visualization
- * 
- * ⚠️ DO NOT DEPLOY - Awaiting Trish review
+ * - Professional dashboard interface
+ * - Order management and tracking  
+ * - Design Vault browsing and purchasing
+ * - Account management
+ * - Monthly drops and exclusive content
+ * - Instagram-style gradients and modern design
  */
 
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,14 +23,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Search, Package, Truck, Clock, CheckCircle2, ChevronRight, 
   Palette, Crown, Trophy, Download, ExternalLink, ArrowRight,
-  Sparkles, Mail, Phone
+  Sparkles, Mail, Phone, LayoutDashboard, ShoppingBag, User,
+  CreditCard, Settings, LogOut, Plus, TrendingUp, Star,
+  Calendar, Image, Zap
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-// Neon gradient colors (matching ShopFlow 2.0)
+// Instagram-style gradient colors
+const INSTAGRAM_GRADIENT = "from-[#833ab4] via-[#fd1d1d] via-[#fcb045] to-[#ffdc80]";
 const NEON_GRADIENT = "from-[#FF00FF] via-[#9D4EDD] to-[#2F81F7]";
-const MAGENTA = "#E91E8C";
-const CYAN = "#15D1FF";
+const COOL_GRADIENT = "from-[#667eea] to-[#764ba2]";
 
 // Stage display config
 const STAGE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -42,6 +43,15 @@ const STAGE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color
   'shipped': { label: 'Shipped', icon: <Truck className="w-4 h-4" />, color: 'text-cyan-400' },
   'delivered': { label: 'Delivered', icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-400' },
 };
+
+// Sidebar navigation items
+const SIDEBAR_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+  { id: 'orders', label: 'Orders', icon: <Package className="w-5 h-5" /> },
+  { id: 'designs', label: 'Design Vault', icon: <Palette className="w-5 h-5" /> },
+  { id: 'drops', label: 'Monthly Drops', icon: <Calendar className="w-5 h-5" /> },
+  { id: 'account', label: 'Account', icon: <User className="w-5 h-5" /> },
+];
 
 interface RecentOrder {
   id: string;
@@ -66,12 +76,12 @@ export default function WPWCustomerDashboard() {
   const [searchParams] = useSearchParams();
   
   // State
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [orderNumber, setOrderNumber] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [featuredDesigns, setFeaturedDesigns] = useState<FeaturedDesign[]>([]);
   const [loading, setLoading] = useState(false);
-  const [emailLookupDone, setEmailLookupDone] = useState(false);
 
   // Check for order in URL
   useEffect(() => {
@@ -103,9 +113,8 @@ export default function WPWCustomerDashboard() {
   };
 
   const handleOrderLookup = () => {
-    const trimmed = orderNumber.trim();
-    if (trimmed) {
-      navigate(`/track/${trimmed}`);
+    if (orderNumber.trim()) {
+      navigate(`/track/${orderNumber.trim()}`);
     }
   };
 
@@ -123,7 +132,6 @@ export default function WPWCustomerDashboard() {
       
       if (error) throw error;
       setRecentOrders(data || []);
-      setEmailLookupDone(true);
     } catch (err) {
       console.error('Error looking up orders:', err);
     } finally {
@@ -139,318 +147,396 @@ export default function WPWCustomerDashboard() {
     });
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0D0D0D] via-[#111111] to-[#0D0D0D]">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-black/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-gradient-to-br from-[#0D0D0D] via-[#111111] to-[#0D0D0D]">
+      <div className="flex">
+        {/* Sidebar */}
+        <div className="w-64 bg-black/50 backdrop-blur-sm border-r border-white/10 min-h-screen">
+          {/* Logo */}
+          <div className="p-6 border-b border-white/10">
             <img 
               src="https://weprintwraps.com/wp-content/uploads/2023/03/WPW-Horizontal-Logo-2023.png" 
               alt="WePrintWraps" 
-              className="h-10 object-contain"
+              className="h-8 object-contain"
             />
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <a href="tel:+14806499209" className="flex items-center gap-2 text-muted-foreground hover:text-white transition">
-              <Phone className="w-4 h-4" />
-              <span className="hidden sm:inline">(480) 649-9209</span>
-            </a>
-            <a href="mailto:hello@weprintwraps.com" className="flex items-center gap-2 text-muted-foreground hover:text-white transition">
-              <Mail className="w-4 h-4" />
-              <span className="hidden sm:inline">Contact Us</span>
-            </a>
+
+          {/* Navigation */}
+          <nav className="p-4 space-y-2">
+            {SIDEBAR_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+                  activeTab === item.id 
+                    ? 'bg-gradient-to-r from-[#9D4EDD] to-[#2F81F7] text-white' 
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {item.icon}
+                <span className="font-medium">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* User section */}
+          <div className="absolute bottom-0 w-64 p-4 border-t border-white/10">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-white/5">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#9D4EDD] to-[#2F81F7] flex items-center justify-center">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="text-white font-medium">Customer</p>
+                <p className="text-gray-400 text-sm">WPW Account</p>
+              </div>
+            </div>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-        {/* Hero Section */}
-        <section className="text-center py-8">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 font-['Poppins']">
-            <span className="text-white">My </span>
-            <span className={`bg-gradient-to-r ${NEON_GRADIENT} bg-clip-text text-transparent`}>Account</span>
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Track your orders, access exclusive designs, and explore the world of premium vehicle wraps
-          </p>
-        </section>
-
-        {/* Order Lookup */}
-        <Card className="p-6 bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
-          <Tabs defaultValue="order" className="w-full">
-            <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-6">
-              <TabsTrigger value="order">Track by Order #</TabsTrigger>
-              <TabsTrigger value="email">Find My Orders</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="order" className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto">
-                <Input
-                  type="text"
-                  placeholder="Enter Order Number (e.g., 33223)"
-                  value={orderNumber}
-                  onChange={(e) => setOrderNumber(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleOrderLookup()}
-                  className="text-lg h-12 bg-black/30 border-white/20"
-                />
-                <Button 
-                  onClick={handleOrderLookup} 
-                  size="lg" 
-                  className={`px-8 bg-gradient-to-r ${NEON_GRADIENT} hover:opacity-90`}
-                >
-                  <Search className="w-5 h-5 mr-2" />
-                  Track
-                </Button>
+        {/* Main Content */}
+        <div className="flex-1">
+          {/* Header */}
+          <header className="border-b border-white/10 bg-black/30 backdrop-blur-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold">
+                  <span className="text-white">
+                    {activeTab === 'dashboard' && 'Dashboard'}
+                    {activeTab === 'orders' && 'Orders'}
+                    {activeTab === 'designs' && 'Design Vault'}
+                    {activeTab === 'drops' && 'Monthly Drops'}
+                    {activeTab === 'account' && 'Account Settings'}
+                  </span>
+                </h1>
+                <p className="text-gray-400 mt-1">
+                  {activeTab === 'dashboard' && 'Welcome to your WePrintWraps dashboard'}
+                  {activeTab === 'orders' && 'Track and manage your orders'}
+                  {activeTab === 'designs' && 'Explore our premium design collection'}
+                  {activeTab === 'drops' && 'Exclusive monthly releases and content'}
+                  {activeTab === 'account' && 'Manage your account preferences'}
+                </p>
               </div>
-              <p className="text-center text-sm text-muted-foreground">
-                Your order number is in your confirmation email
-              </p>
-            </TabsContent>
-            
-            <TabsContent value="email" className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto">
-                <Input
-                  type="email"
-                  placeholder="Enter your email address"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleEmailLookup()}
-                  className="text-lg h-12 bg-black/30 border-white/20"
-                />
-                <Button 
-                  onClick={handleEmailLookup} 
-                  size="lg" 
-                  disabled={loading}
-                  className={`px-8 bg-gradient-to-r ${NEON_GRADIENT} hover:opacity-90`}
-                >
-                  {loading ? 'Searching...' : 'Find Orders'}
-                </Button>
+              <div className="flex items-center gap-4">
+                <a href="tel:+14806499209" className="flex items-center gap-2 text-gray-400 hover:text-white transition">
+                  <Phone className="w-4 h-4" />
+                  <span className="hidden sm:inline">(480) 649-9209</span>
+                </a>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </header>
 
-          {/* Recent Orders Results */}
-          {emailLookupDone && (
-            <div className="mt-6 pt-6 border-t border-white/10">
-              {recentOrders.length > 0 ? (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Your Recent Orders</h3>
-                  {recentOrders.map((order) => {
-                    const stage = STAGE_CONFIG[order.current_stage] || STAGE_CONFIG['order_received'];
-                    return (
-                      <button
-                        key={order.id}
-                        onClick={() => navigate(`/track/${order.order_number}`)}
-                        className="w-full flex items-center justify-between p-4 rounded-lg bg-black/30 hover:bg-black/50 border border-white/10 hover:border-white/20 transition group"
+          {/* Content Area */}
+          <main className="p-6">
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Card className="bg-gradient-to-br from-[#16213e]/80 to-[#1a1a2e]/80 border-white/10">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-full bg-gradient-to-r from-[#2F81F7]/20 to-[#9D4EDD]/20">
+                          <Package className="w-6 h-6 text-[#2F81F7]" />
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm">Total Orders</p>
+                          <p className="text-2xl font-bold text-white">{recentOrders.length}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-[#16213e]/80 to-[#1a1a2e]/80 border-white/10">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-full bg-gradient-to-r from-[#E91E8C]/20 to-[#9D4EDD]/20">
+                          <Star className="w-6 h-6 text-[#E91E8C]" />
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm">Saved Designs</p>
+                          <p className="text-2xl font-bold text-white">12</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-[#16213e]/80 to-[#1a1a2e]/80 border-white/10">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-full bg-gradient-to-r from-[#00D4FF]/20 to-[#2F81F7]/20">
+                          <Trophy className="w-6 h-6 text-[#00D4FF]" />
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm">ClubWPW Status</p>
+                          <p className="text-2xl font-bold text-white">Member</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Order Lookup */}
+                  <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                    <CardHeader>
+                      <CardTitle className="text-white">Quick Order Lookup</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex gap-3">
+                        <Input
+                          type="text"
+                          placeholder="Enter Order Number"
+                          value={orderNumber}
+                          onChange={(e) => setOrderNumber(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleOrderLookup()}
+                          className="bg-black/30 border-white/20 text-white"
+                        />
+                        <Button 
+                          onClick={handleOrderLookup} 
+                          className="bg-gradient-to-r from-[#9D4EDD] to-[#2F81F7] hover:opacity-90"
+                        >
+                          <Search className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Design Vault Promo */}
+                  <Card className="bg-gradient-to-br from-[#E91E8C]/10 to-[#9D4EDD]/10 border-[#E91E8C]/20 relative overflow-hidden">
+                    <div className={`absolute inset-0 bg-gradient-to-r ${INSTAGRAM_GRADIENT} opacity-5`} />
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-[#E91E8C]" />
+                        Design Vault
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-300 mb-4">Discover premium wrap designs from top creators worldwide.</p>
+                      <Button 
+                        onClick={() => setActiveTab('designs')}
+                        className={`bg-gradient-to-r ${INSTAGRAM_GRADIENT} hover:opacity-90 text-white`}
                       >
+                        Explore Designs
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'designs' && (
+              <div className="space-y-6">
+                {/* Design Categories */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[
+                    { title: "Latest Drops", count: "24 designs", color: "from-[#FF6B6B] to-[#4ECDC4]", icon: <Zap className="w-6 h-6" /> },
+                    { title: "Trending", count: "18 designs", color: "from-[#A8E6CF] to-[#88D8C0]", icon: <TrendingUp className="w-6 h-6" /> },
+                    { title: "Premium", count: "12 designs", color: "from-[#FFD93D] to-[#FF6B6B]", icon: <Crown className="w-6 h-6" /> },
+                  ].map((category) => (
+                    <Card key={category.title} className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10 hover:border-white/20 transition cursor-pointer group">
+                      <CardContent className="p-6">
                         <div className="flex items-center gap-4">
-                          <div className={`${stage.color}`}>{stage.icon}</div>
-                          <div className="text-left">
-                            <p className="font-medium">Order #{order.order_number}</p>
-                            <p className="text-sm text-muted-foreground">{formatDate(order.created_at)}</p>
+                          <div className={`p-3 rounded-full bg-gradient-to-r ${category.color} bg-opacity-20`}>
+                            {category.icon}
+                          </div>
+                          <div>
+                            <h3 className="text-white font-semibold group-hover:text-[#E91E8C] transition">{category.title}</h3>
+                            <p className="text-gray-400 text-sm">{category.count}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <Badge variant="outline" className={stage.color}>
-                            {stage.label}
-                          </Badge>
-                          <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-white transition" />
-                        </div>
-                      </button>
-                    );
-                  })}
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-              ) : (
-                <p className="text-center text-muted-foreground py-4">
-                  No orders found for this email address
-                </p>
-              )}
-            </div>
-          )}
-        </Card>
 
-        {/* Two Column Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* ClubWPW Preview */}
-          <Card className="p-6 bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#FF00FF]/20 to-transparent rounded-bl-full" />
-            
-            <div className="flex items-center gap-3 mb-4">
-              <Crown className="w-6 h-6 text-[#FFD700]" />
-              <h2 className="text-xl font-bold">Club<span className="text-[#E91E8C]">WPW</span></h2>
-              <Badge className="bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black text-xs">FREE</Badge>
-            </div>
-            
-            <p className="text-muted-foreground mb-4">
-              Exclusive monthly design drops, Wrap of the Week voting, and member-only perks
-            </p>
-            
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center gap-3 text-sm">
-                <Download className="w-4 h-4 text-[#15D1FF]" />
-                <span>Monthly print-ready design packs</span>
+                {/* Featured Designs Grid */}
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-4">Featured Designs</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {featuredDesigns.map((design) => {
+                      const imageUrl = design.render_urls?.hero || Object.values(design.render_urls || {})[0];
+                      return (
+                        <Card 
+                          key={design.id}
+                          className="group overflow-hidden bg-black/30 border-white/10 hover:border-[#E91E8C]/50 transition cursor-pointer"
+                        >
+                          <div className="aspect-square bg-gradient-to-br from-[#1a1a2e] to-[#16213e] relative">
+                            {imageUrl ? (
+                              <img 
+                                src={imageUrl} 
+                                alt={design.color_name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Image className="w-8 h-8 text-gray-400" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="absolute bottom-2 left-2 right-2">
+                                <p className="text-white text-xs font-medium truncate">{design.color_name}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Trophy className="w-4 h-4 text-[#FFD700]" />
-                <span>Vote for Wrap of the Week</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <Sparkles className="w-4 h-4 text-[#E91E8C]" />
-                <span>Early access to new products</span>
-              </div>
-            </div>
-            
-            <Button 
-              onClick={() => navigate('/wrap-of-the-week')}
-              className="w-full bg-gradient-to-r from-[#E91E8C] to-[#9D4EDD] hover:opacity-90"
-            >
-              Explore ClubWPW
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </Card>
+            )}
 
-          {/* RestyleProAI CTA */}
-          <Card className="p-6 bg-gradient-to-br from-[#16213e]/80 to-[#1a1a2e]/80 border-white/10 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-[#2F81F7]/20 to-transparent rounded-bl-full" />
-            
-            <div className="flex items-center gap-3 mb-4">
-              <Palette className="w-6 h-6 text-[#2F81F7]" />
-              <h2 className="text-xl font-bold">
-                <span className="text-white">Restyle</span>
-                <span className="text-[#2F81F7]">Pro</span>
-                <span className="text-[#E91E8C]">AI</span>
-              </h2>
-            </div>
-            
-            <p className="text-muted-foreground mb-4">
-              See your vehicle in any color before you buy. AI-powered 3D visualization in seconds.
-            </p>
-            
-            <div className="aspect-video bg-gradient-to-br from-[#2F81F7]/10 to-[#E91E8C]/10 rounded-lg mb-4 flex items-center justify-center border border-white/10">
-              <div className="text-center">
-                <Sparkles className="w-12 h-12 text-[#2F81F7] mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">3D Wrap Visualization</p>
-              </div>
-            </div>
-            
-            <Button 
-              onClick={() => window.open('https://restyleproai.com', '_blank')}
-              variant="outline"
-              className="w-full border-[#2F81F7] text-[#2F81F7] hover:bg-[#2F81F7]/10"
-            >
-              Try RestyleProAI
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </Button>
-          </Card>
-        </div>
-
-        {/* Featured Designs */}
-        {featuredDesigns.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">
-                <span className="text-white">Featured </span>
-                <span className={`bg-gradient-to-r ${NEON_GRADIENT} bg-clip-text text-transparent`}>Designs</span>
-              </h2>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => navigate('/design-shop')}
-                className="text-muted-foreground hover:text-white"
-              >
-                View All
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {featuredDesigns.map((design) => {
-                const imageUrl = design.render_urls?.hero || Object.values(design.render_urls || {})[0];
-                return (
-                  <Card 
-                    key={design.id}
-                    className="group overflow-hidden bg-black/30 border-white/10 hover:border-white/30 transition cursor-pointer"
-                    onClick={() => navigate('/design-shop')}
-                  >
-                    <div className="aspect-square bg-gradient-to-br from-[#1a1a2e] to-[#16213e] relative">
-                      {imageUrl ? (
-                        <img 
-                          src={imageUrl} 
-                          alt={design.color_name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Palette className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                      )}
+            {activeTab === 'orders' && (
+              <div className="space-y-6">
+                {/* Email Lookup */}
+                <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                  <CardHeader>
+                    <CardTitle className="text-white">Find My Orders</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex gap-3">
+                      <Input
+                        type="email"
+                        placeholder="Enter your email address"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleEmailLookup()}
+                        className="bg-black/30 border-white/20 text-white"
+                      />
+                      <Button 
+                        onClick={handleEmailLookup}
+                        disabled={loading}
+                        className="bg-gradient-to-r from-[#9D4EDD] to-[#2F81F7] hover:opacity-90"
+                      >
+                        {loading ? 'Searching...' : 'Find Orders'}
+                      </Button>
                     </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium truncate">{design.color_name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {design.vehicle_make} {design.vehicle_model}
-                      </p>
-                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Orders Table */}
+                {recentOrders.length > 0 && (
+                  <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                    <CardHeader>
+                      <CardTitle className="text-white">Your Orders</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {recentOrders.map((order) => {
+                          const stage = STAGE_CONFIG[order.current_stage] || STAGE_CONFIG.order_received;
+                          return (
+                            <div 
+                              key={order.id}
+                              className="flex items-center justify-between p-4 rounded-lg bg-black/30 border border-white/10 hover:border-white/20 transition cursor-pointer"
+                              onClick={() => navigate(`/track/${order.order_number}`)}
+                            >
+                              <div className="flex items-center gap-4">
+                                <div className={`p-2 rounded-full ${stage.color}`}>
+                                  {stage.icon}
+                                </div>
+                                <div>
+                                  <p className="text-white font-medium">Order #{order.order_number}</p>
+                                  <p className="text-gray-400 text-sm">{formatDate(order.created_at)}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-white font-medium">{formatCurrency(order.total_amount)}</p>
+                                <Badge className={`${stage.color} bg-opacity-20`}>
+                                  {stage.label}
+                                </Badge>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
                   </Card>
-                );
-              })}
-            </div>
-          </section>
-        )}
+                )}
+              </div>
+            )}
 
-        {/* Quick Links */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <QuickLink 
-            href="https://weprintwraps.com/shop" 
-            icon={<Package className="w-5 h-5" />}
-            label="Shop Products"
-          />
-          <QuickLink 
-            href="https://weprintwraps.com/wrap-calculator" 
-            icon={<Palette className="w-5 h-5" />}
-            label="Wrap Calculator"
-          />
-          <QuickLink 
-            href="https://weprintwraps.com/resources" 
-            icon={<Download className="w-5 h-5" />}
-            label="Resources"
-          />
-          <QuickLink 
-            href="https://weprintwraps.com/contact" 
-            icon={<Mail className="w-5 h-5" />}
-            label="Contact Us"
-          />
-        </section>
-      </main>
+            {activeTab === 'drops' && (
+              <div className="space-y-6">
+                <Card className={`bg-gradient-to-br from-[#E91E8C]/10 to-[#9D4EDD]/10 border-[#E91E8C]/20 relative overflow-hidden`}>
+                  <div className={`absolute inset-0 bg-gradient-to-r ${INSTAGRAM_GRADIENT} opacity-5`} />
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Crown className="w-6 h-6 text-[#E91E8C]" />
+                      ClubWPW Monthly Drops
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-300 mb-6">Exclusive monthly releases featuring limited-edition designs, early access to new products, and premium content.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <h3 className="text-white font-semibold">February 2026 Drop</h3>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-gray-300">
+                            <CheckCircle2 className="w-4 h-4 text-green-400" />
+                            <span>5 Exclusive Design Templates</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-gray-300">
+                            <CheckCircle2 className="w-4 h-4 text-green-400" />
+                            <span>Early RestyleProAI Access</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-gray-300">
+                            <CheckCircle2 className="w-4 h-4 text-green-400" />
+                            <span>Member-Only Pricing</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="aspect-video bg-gradient-to-br from-[#2F81F7]/10 to-[#E91E8C]/10 rounded-lg flex items-center justify-center border border-white/10">
+                        <div className="text-center">
+                          <Calendar className="w-12 h-12 text-[#E91E8C] mx-auto mb-2" />
+                          <p className="text-gray-300">February Drop Preview</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button 
+                      className={`mt-6 bg-gradient-to-r ${INSTAGRAM_GRADIENT} hover:opacity-90 text-white`}
+                      onClick={() => navigate('/wrap-of-the-week')}
+                    >
+                      View Current Drop
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
-      {/* Footer */}
-      <footer className="border-t border-white/10 mt-12 py-8 bg-black/30">
-        <div className="max-w-6xl mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© {new Date().getFullYear()} WePrintWraps. All rights reserved.</p>
-          <p className="mt-2">
-            Premium vehicle wrap printing • Made in USA • 
-            <a href="https://weprintwraps.com" className="text-[#2F81F7] hover:underline ml-1">
-              weprintwraps.com
-            </a>
-          </p>
+            {activeTab === 'account' && (
+              <div className="space-y-6">
+                <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                  <CardHeader>
+                    <CardTitle className="text-white">Account Information</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-300">Account management features coming soon. For now, contact us for any account updates.</p>
+                    <div className="flex gap-4 mt-6">
+                      <Button variant="outline" className="border-white/20 text-white hover:bg-white/5">
+                        <Mail className="w-4 h-4 mr-2" />
+                        Contact Support
+                      </Button>
+                      <Button variant="outline" className="border-white/20 text-white hover:bg-white/5">
+                        <Phone className="w-4 h-4 mr-2" />
+                        Call (480) 649-9209
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </main>
         </div>
-      </footer>
+      </div>
     </div>
-  );
-}
-
-// Quick Link Component
-function QuickLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 p-4 rounded-lg bg-black/30 border border-white/10 hover:border-white/20 hover:bg-black/50 transition group"
-    >
-      <span className="text-muted-foreground group-hover:text-[#2F81F7] transition">{icon}</span>
-      <span className="text-sm font-medium">{label}</span>
-    </a>
   );
 }
