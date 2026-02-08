@@ -241,7 +241,7 @@ const App = () => (
             <Route path="/wpw-dashboard" element={<WPWDashboard />} />
             <Route path="/my-account" element={<WPWDashboard />} />
             {/* NEW: WPW Customer Dashboard v2 - For Review */}
-            <Route path="/my-wpw" element={<WPWCustomerDashboard />} />
+            <Route path="/customer" element={<WPWCustomerDashboard />} />
           <Route path="/design-generator" element={
             <AppLayout>
               <DesignGenerator />
