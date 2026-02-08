@@ -1,7 +1,7 @@
 /**
- * WPW Customer Dashboard
+ * WPW ShopFlow Account Dashboard
  * 
- * Professional dashboard for WePrintWraps.com customers
+ * Professional customer dashboard powered by WrapCommandAI
  * Features modern dashboard layout with sidebar navigation
  * 
  * Features:
@@ -83,6 +83,14 @@ export default function WPWCustomerDashboard() {
   const [featuredDesigns, setFeaturedDesigns] = useState<FeaturedDesign[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Set page title
+  useEffect(() => {
+    document.title = 'WPW ShopFlow Account | WePrintWraps';
+    return () => {
+      document.title = 'WrapCommand | Professional Wrap Design SaaS Platform';
+    };
+  }, []);
+
   // Check for order in URL
   useEffect(() => {
     const orderParam = searchParams.get('order');
@@ -161,11 +169,17 @@ export default function WPWCustomerDashboard() {
         <div className="w-64 bg-black/50 backdrop-blur-sm border-r border-white/10 min-h-screen">
           {/* Logo */}
           <div className="p-6 border-b border-white/10">
-            <img 
-              src="https://weprintwraps.com/wp-content/uploads/2023/03/WPW-Horizontal-Logo-2023.png" 
-              alt="WePrintWraps" 
-              className="h-8 object-contain"
-            />
+            <div className="space-y-2">
+              <img 
+                src="https://weprintwraps.com/wp-content/uploads/2023/03/WPW-Horizontal-Logo-2023.png" 
+                alt="WePrintWraps" 
+                className="h-6 object-contain"
+              />
+              <div className="text-center">
+                <p className="text-[#2F81F7] text-xs font-semibold">ShopFlow Account</p>
+                <p className="text-gray-400 text-[10px]">powered by WrapCommandAI</p>
+              </div>
+            </div>
           </div>
 
           {/* Navigation */}
@@ -194,7 +208,7 @@ export default function WPWCustomerDashboard() {
               </div>
               <div className="flex-1">
                 <p className="text-white font-medium">Customer</p>
-                <p className="text-gray-400 text-sm">WPW Account</p>
+                <p className="text-gray-400 text-sm">ShopFlow Account</p>
               </div>
             </div>
           </div>
@@ -216,7 +230,7 @@ export default function WPWCustomerDashboard() {
                   </span>
                 </h1>
                 <p className="text-gray-400 mt-1">
-                  {activeTab === 'dashboard' && 'Welcome to your WePrintWraps dashboard'}
+                  {activeTab === 'dashboard' && 'Welcome to your WPW ShopFlow Account'}
                   {activeTab === 'orders' && 'Track and manage your orders'}
                   {activeTab === 'designs' && 'Explore our premium design collection'}
                   {activeTab === 'drops' && 'Exclusive monthly releases and content'}
