@@ -240,6 +240,7 @@ const App = () => (
             <Route path="/clubwpw-admin" element={<ClubWPWAdmin />} />
             <Route path="/wpw-dashboard" element={<WPWDashboard />} />
             <Route path="/my-account" element={<WPWDashboard />} />
+            <Route path="/my-wpw" element={<WPWCustomerDashboard />} />
             {/* NEW: WPW Customer Dashboard v2 - For Review */}
             <Route path="/customer" element={<WPWCustomerDashboard />} />
           <Route path="/design-generator" element={
