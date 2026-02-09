@@ -295,6 +295,24 @@ serve(async (req) => {
       }
     }
 
+    // Trigger team notifications for assigned emails
+    const assignedEmails = results.filter(r => r.assignedTo);
+    if (assignedEmails.length > 0) {
+      console.log(`Triggering notifications for ${assignedEmails.length} assigned emails`);
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/mightymail-notify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({}),
+        });
+      } catch (e) {
+        console.error('Notification trigger failed:', e);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       processed,
