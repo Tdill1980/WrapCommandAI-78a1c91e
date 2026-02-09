@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
-import { MapPin, Mail, Phone, Clock, Globe, Car, AlertCircle, User, MessageSquare, FileText, Download, Receipt, CheckCircle, XCircle, Reply, Upload } from "lucide-react";
+import { MapPin, Mail, Phone, Clock, Globe, Car, AlertCircle, User, MessageSquare, FileText, Download, Receipt, CheckCircle, XCircle, Reply, Upload, Trash2, CheckCheck } from "lucide-react";
 import type { ChatConversation } from "@/hooks/useWebsiteChats";
 import { useConversationEvents } from "@/hooks/useConversationEvents";
 import { useConversationQuotes } from "@/hooks/useConversationQuotes";
@@ -81,9 +81,69 @@ export function ChatDetailModal({ conversation, open, onOpenChange }: ChatDetail
     }
   };
 
-  const handleMarkComplete = () => logEvent('marked_complete', { 
-    resolution_notes: 'Marked complete by admin' 
-  });
+  const handleMarkComplete = async () => {
+    setIsProcessing(true);
+    try {
+      // Update conversation status to 'resolved'
+      const { error: statusError } = await supabase
+        .from('conversations')
+        .update({ status: 'resolved' })
+        .eq('id', conversation.id);
+      
+      if (statusError) throw statusError;
+      
+      // Also log the event
+      await logEvent('marked_complete', { resolution_notes: 'Marked complete by admin' });
+      
+      queryClient.invalidateQueries({ queryKey: ['website-page-chats'] });
+      toast.success('Chat marked as complete');
+    } catch (err) {
+      console.error('Failed to mark complete:', err);
+      toast.error('Failed to mark complete');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  const handleDeleteChat = async () => {
+    if (!window.confirm('Are you sure you want to delete this chat? This cannot be undone.')) {
+      return;
+    }
+    
+    setIsProcessing(true);
+    try {
+      // Delete messages first (due to foreign key)
+      const { error: msgError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('conversation_id', conversation.id);
+      
+      if (msgError) throw msgError;
+      
+      // Delete conversation events
+      await supabase
+        .from('conversation_events')
+        .delete()
+        .eq('conversation_id', conversation.id);
+      
+      // Delete the conversation
+      const { error: convError } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversation.id);
+      
+      if (convError) throw convError;
+      
+      queryClient.invalidateQueries({ queryKey: ['website-page-chats'] });
+      toast.success('Chat deleted');
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Failed to delete chat:', err);
+      toast.error('Failed to delete chat');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
   
   const handleDismissQuote = () => logEvent('marked_no_quote_required', { 
     reason: 'Quote not needed for this escalation' 
@@ -563,6 +623,28 @@ export function ChatDetailModal({ conversation, open, onOpenChange }: ChatDetail
                 >
                   <Receipt className="w-4 h-4 mr-2" />
                   Create Quote
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-green-600 hover:text-green-700 hover:bg-green-50"
+                  onClick={handleMarkComplete}
+                  disabled={isProcessing || conversation.status === 'resolved'}
+                >
+                  <CheckCheck className="w-4 h-4 mr-2" />
+                  {conversation.status === 'resolved' ? 'Completed' : 'Mark Complete'}
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={handleDeleteChat}
+                  disabled={isProcessing}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Chat
                 </Button>
               </CardContent>
             </Card>
