@@ -31,6 +31,7 @@ import DesignShop from "./pages/DesignShop";
 import ClubWPWAdmin from "./pages/ClubWPWAdmin";
 import WPWDashboard from "./pages/WPWDashboard";
 import WPWCustomerDashboard from "./pages/WPWCustomerDashboard";
+import WPWAccountPage from "./pages/WPWAccountPage";
 import ApproveFlow from "./pages/ApproveFlow";
 import ApproveFlowList from "./pages/ApproveFlowList";
 import ApproveFlowProof from "./pages/ApproveFlowProof";
@@ -249,6 +250,8 @@ const App = () => (
             <Route path="/wpw-dashboard" element={<WPWDashboard />} />
             <Route path="/my-account" element={<WPWDashboard />} />
             <Route path="/my-wpw" element={<WPWCustomerDashboard />} />
+            <Route path="/my-account" element={<WPWAccountPage />} />
+            <Route path="/wpw-account" element={<WPWAccountPage />} />
             {/* NEW: WPW Customer Dashboard v2 - For Review */}
             <Route path="/customer" element={<WPWCustomerDashboard />} />
           <Route path="/design-generator" element={
