@@ -17,10 +17,11 @@ interface Stats {
   conversionRate: number;
   escalations: number;
   fileSubmissions: number;
-  avgResponseTime: number;
+  avgResponseTimeHours: number;
   emailsByCategory: Record<string, number>;
   emailsByMailbox: Record<string, number>;
   dailyVolume: { date: string; count: number }[];
+  teamPerformance: { name: string; assigned: number; processed: number }[];
 }
 
 export default function MightymailAnalytics() {
@@ -88,6 +89,40 @@ export default function MightymailAnalytics() {
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
+      // Get full email data for response times and team performance
+      const { data: fullEmails } = await supabase
+        .from('mightymail_inbox')
+        .select('assigned_to, received_at, processed_at, is_read')
+        .gte('received_at', startDate);
+
+      // Calculate avg response time (received → processed)
+      let totalResponseMs = 0;
+      let responseCount = 0;
+      fullEmails?.forEach(e => {
+        if (e.received_at && e.processed_at) {
+          const diff = new Date(e.processed_at).getTime() - new Date(e.received_at).getTime();
+          if (diff > 0 && diff < 86400000 * 7) { // Ignore outliers > 7 days
+            totalResponseMs += diff;
+            responseCount++;
+          }
+        }
+      });
+      const avgResponseTimeHours = responseCount > 0 ? (totalResponseMs / responseCount) / 3600000 : 0;
+
+      // Team performance
+      const teamMap: Record<string, { assigned: number; processed: number }> = {};
+      fullEmails?.forEach(e => {
+        if (e.assigned_to) {
+          const name = e.assigned_to.split('@')[0];
+          if (!teamMap[name]) teamMap[name] = { assigned: 0, processed: 0 };
+          teamMap[name].assigned++;
+          if (e.is_read) teamMap[name].processed++;
+        }
+      });
+      const teamPerformance = Object.entries(teamMap)
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.assigned - a.assigned);
+
       setStats({
         totalEmails,
         unread,
@@ -97,10 +132,11 @@ export default function MightymailAnalytics() {
         conversionRate: quoteRequests > 0 ? (quotesConverted / quoteRequests) * 100 : 0,
         escalations,
         fileSubmissions,
-        avgResponseTime: 0, // TODO: Calculate from events
+        avgResponseTimeHours,
         emailsByCategory,
         emailsByMailbox,
         dailyVolume,
+        teamPerformance,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -181,10 +217,14 @@ export default function MightymailAnalytics() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Escalations</p>
-                <p className="text-3xl font-bold">{stats.escalations}</p>
+                <p className="text-sm text-muted-foreground">Avg Response</p>
+                <p className="text-3xl font-bold">
+                  {stats.avgResponseTimeHours < 1 
+                    ? `${Math.round(stats.avgResponseTimeHours * 60)}m`
+                    : `${stats.avgResponseTimeHours.toFixed(1)}h`}
+                </p>
               </div>
-              <AlertTriangle className="h-8 w-8 text-red-500" />
+              <Clock className="h-8 w-8 text-orange-500" />
             </div>
           </CardContent>
         </Card>
@@ -269,6 +309,45 @@ export default function MightymailAnalytics() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Team Performance */}
+      {stats.teamPerformance.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Team Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-3 gap-4">
+              {stats.teamPerformance.map((member) => (
+                <Card key={member.name} className="p-4">
+                  <div className="font-medium capitalize">{member.name}</div>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Assigned</span>
+                      <span className="font-medium">{member.assigned}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Processed</span>
+                      <span className="font-medium text-green-600">{member.processed}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Rate</span>
+                      <span className="font-medium">
+                        {member.assigned > 0 
+                          ? `${Math.round((member.processed / member.assigned) * 100)}%`
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Daily Volume Chart */}
       <Card>
