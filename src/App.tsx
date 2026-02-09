@@ -248,7 +248,7 @@ const App = () => (
             <Route path="/admin/clubwpw" element={<ClubWPWAdmin />} />
             <Route path="/clubwpw-admin" element={<ClubWPWAdmin />} />
             <Route path="/wpw-dashboard" element={<WPWDashboard />} />
-            <Route path="/my-wpw" element={<WPWCustomerDashboard />} />
+            <Route path="/my-wpw" element={<WPWAccountPage />} />
             <Route path="/my-account" element={<WPWAccountPage />} />
             <Route path="/wpw-account" element={<WPWAccountPage />} />
             <Route path="/account" element={<WPWAccountPage />} />
