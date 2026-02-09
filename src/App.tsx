@@ -1,4 +1,4 @@
-// trigger rebuild v3 - VoiceCommandAI dashboard card
+// trigger rebuild v4 - fix routes cache bust 1770614000
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -254,7 +254,7 @@ const App = () => (
             <Route path="/account" element={<WPWAccountPage />} />
             {/* NEW: WPW Customer Dashboard v2 - For Review */}
             <Route path="/customer" element={<WPWCustomerDashboard />} />
-          <Route path="/design-generator" element={
+            <Route path="/design-generator" element={
             <AppLayout>
               <DesignGenerator />
             </AppLayout>
