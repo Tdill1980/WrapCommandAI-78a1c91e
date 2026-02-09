@@ -1,10 +1,11 @@
 /**
  * WPW Account Page
- * Version: 2.0.0 - Feb 9, 2026
+ * Version: 2.0.1 - Feb 9, 2026 - Cache bust v5
  * 
  * AdminFlux-style dashboard for WePrintWraps customers
  * Reference: AdminFlux dark theme with green accents
  */
+console.log('[WPWAccountPage] v2.0.1 loaded - AdminFlux style');
 
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
