@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Mail, Inbox, Send, AlertTriangle, DollarSign, Users, 
   FileText, Tag, User, Clock, RefreshCw, Search, Filter,
-  ChevronRight, Paperclip, Star, Archive, Trash2, Reply
+  ChevronRight, Paperclip, Star, Archive, Trash2, Reply,
+  FileCheck, ExternalLink, AlertCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,8 @@ interface Email {
   is_new_customer: boolean;
   customer_email: string;
   received_at: string;
+  quote_id: string | null;
+  quote_status: string | null;
 }
 
 const CATEGORY_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -361,7 +364,7 @@ export default function MightymailInbox() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {email.category && CATEGORY_CONFIG[email.category] && (
                       <Badge 
                         className={`${CATEGORY_CONFIG[email.category].color} text-white text-xs`}
@@ -377,6 +380,18 @@ export default function MightymailInbox() {
                       <Badge variant="secondary" className="text-xs">
                         <User className="h-3 w-3 mr-1" />
                         {email.assigned_to.split('@')[0]}
+                      </Badge>
+                    )}
+                    {email.quote_status === 'pending' && (
+                      <Badge className="bg-yellow-500 text-white text-xs">
+                        <FileCheck className="h-3 w-3 mr-1" />
+                        Quote Ready
+                      </Badge>
+                    )}
+                    {email.quote_status === 'needs_info' && (
+                      <Badge variant="outline" className="text-yellow-600 border-yellow-600 text-xs">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Needs Info
                       </Badge>
                     )}
                   </div>
@@ -401,6 +416,15 @@ export default function MightymailInbox() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {selectedEmail.quote_id && (
+                  <Button 
+                    variant="default" 
+                    size="sm"
+                    onClick={() => window.open(`/quote-drafts?id=${selectedEmail.quote_id}`, '_blank')}
+                  >
+                    <FileCheck className="h-4 w-4 mr-2" /> View Quote
+                  </Button>
+                )}
                 <Button variant="outline" size="sm">
                   <Reply className="h-4 w-4 mr-2" /> Reply
                 </Button>

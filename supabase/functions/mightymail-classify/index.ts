@@ -259,6 +259,24 @@ serve(async (req) => {
       }
     }
 
+    // Trigger auto-quote for any quote_request emails
+    const quoteRequests = results.filter(r => r.category === 'quote_request');
+    if (quoteRequests.length > 0) {
+      console.log(`Triggering auto-quote for ${quoteRequests.length} quote requests`);
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/mightymail-autoquote`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({}),
+        });
+      } catch (e) {
+        console.error('Auto-quote trigger failed:', e);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       processed,
