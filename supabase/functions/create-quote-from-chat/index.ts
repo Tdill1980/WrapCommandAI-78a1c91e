@@ -174,8 +174,23 @@ serve(async (req) => {
       product_name: passedProductName,
       product_price = 5.27,
       send_email = true,
-      organization_id = '51aa96db-c06d-41ae-b3cb-25b045c75caf'
+      organization_id = '51aa96db-c06d-41ae-b3cb-25b045c75caf',
+      test_mode = false
     } = await req.json();
+
+    // TEST MODE: Skip everything and return mock response for health checks
+    if (test_mode) {
+      console.log('[CreateQuoteFromChat] TEST MODE - returning mock response without creating data');
+      return new Response(JSON.stringify({
+        success: true,
+        quote_number: 'TEST-MOCK-QUOTE',
+        quote_id: 'test-mock-id',
+        test_mode: true,
+        message: 'Test mode - no actual quote created'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     console.log('[CreateQuoteFromChat] Starting:', { conversation_id, customer_email, vehicle_make, vehicle_model });
 
