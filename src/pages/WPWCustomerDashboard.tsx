@@ -1,5 +1,6 @@
 /**
  * WPW ShopFlow Account Dashboard
+ * Version: 2.1.0 - Feb 9, 2026 (cache bust)
  * 
  * Professional customer dashboard powered by WrapCommandAI
  * Features modern dashboard layout with sidebar navigation
@@ -11,6 +12,7 @@
  * - Account management
  * - Monthly drops and exclusive content
  * - Instagram-style gradients and modern design
+ * - Wrap of the Week integration
  */
 
 import { useState, useEffect } from "react";
@@ -50,6 +52,7 @@ const SIDEBAR_ITEMS = [
   { id: 'orders', label: 'Orders', icon: <Package className="w-5 h-5" /> },
   { id: 'designs', label: 'Design Vault', icon: <Palette className="w-5 h-5" /> },
   { id: 'drops', label: 'Monthly Drops', icon: <Calendar className="w-5 h-5" /> },
+  { id: 'wotw', label: 'Wrap of the Week', icon: <Trophy className="w-5 h-5" /> },
   { id: 'account', label: 'Account', icon: <User className="w-5 h-5" /> },
 ];
 
@@ -226,6 +229,7 @@ export default function WPWCustomerDashboard() {
                     {activeTab === 'orders' && 'Orders'}
                     {activeTab === 'designs' && 'Design Vault'}
                     {activeTab === 'drops' && 'Monthly Drops'}
+                    {activeTab === 'wotw' && 'Wrap of the Week'}
                     {activeTab === 'account' && 'Account Settings'}
                   </span>
                 </h1>
@@ -234,6 +238,7 @@ export default function WPWCustomerDashboard() {
                   {activeTab === 'orders' && 'Track and manage your orders'}
                   {activeTab === 'designs' && 'Explore our premium design collection'}
                   {activeTab === 'drops' && 'Exclusive monthly releases and content'}
+                  {activeTab === 'wotw' && 'Vote for the best wraps and win prizes'}
                   {activeTab === 'account' && 'Manage your account preferences'}
                 </p>
               </div>
@@ -519,6 +524,75 @@ export default function WPWCustomerDashboard() {
                       onClick={() => navigate('/wrap-of-the-week')}
                     >
                       View Current Drop
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {activeTab === 'wotw' && (
+              <div className="space-y-6">
+                {/* Hero Banner */}
+                <Card className={`bg-gradient-to-r ${NEON_GRADIENT} border-0 overflow-hidden`}>
+                  <CardContent className="p-8 text-center">
+                    <Trophy className="w-16 h-16 mx-auto mb-4 text-yellow-300" />
+                    <h2 className="text-3xl font-bold text-white mb-2">Wrap of the Week</h2>
+                    <p className="text-white/80 text-lg mb-6">Vote for the best wraps and compete for the SEMA "Paint is Dead" Wrap of the Year!</p>
+                    <Button 
+                      size="lg"
+                      className="bg-white text-purple-600 hover:bg-white/90"
+                      onClick={() => navigate('/wrap-of-the-week')}
+                    >
+                      <Trophy className="w-5 h-5 mr-2" />
+                      Enter the Competition
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Features Grid */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto mb-4">
+                        <Star className="w-6 h-6 text-yellow-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">Weekly Voting</h3>
+                      <p className="text-gray-400 text-sm">Vote for your favorite wraps every week</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-4">
+                        <Crown className="w-6 h-6 text-purple-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">Win Prizes</h3>
+                      <p className="text-gray-400 text-sm">Monthly winners get featured + prizes</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 rounded-full bg-cyan-500/20 flex items-center justify-center mx-auto mb-4">
+                        <Zap className="w-6 h-6 text-cyan-400" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-white mb-2">SEMA Show</h3>
+                      <p className="text-gray-400 text-sm">Compete for Wrap of the Year at SEMA</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* CTA */}
+                <Card className="bg-gradient-to-br from-[#1a1a2e]/80 to-[#16213e]/80 border-white/10">
+                  <CardContent className="p-6 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Ready to Submit Your Wrap?</h3>
+                      <p className="text-gray-400">Show off your work and get recognized by the community</p>
+                    </div>
+                    <Button 
+                      className={`bg-gradient-to-r ${INSTAGRAM_GRADIENT} hover:opacity-90`}
+                      onClick={() => navigate('/wrap-of-the-week')}
+                    >
+                      Submit Now
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </CardContent>
