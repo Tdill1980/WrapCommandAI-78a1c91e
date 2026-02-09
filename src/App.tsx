@@ -45,6 +45,7 @@ import MightyMailCampaignSender from "./pages/MightyMailCampaignSender";
 import MightyMailSequences from "./pages/MightyMailSequences";
 import NightmareInbox from "./pages/NightmareInbox";
 import MightymailInbox from "./pages/MightymailInbox";
+import DesignDesk from "./pages/DesignDesk";
 import AIPipeline from "./pages/AIPipeline";
 import ContentBox from "./pages/ContentBox";
 import ContentSchedule from "./pages/ContentSchedule";
@@ -175,6 +176,7 @@ const App = () => (
             <Route path="/mightymail/sequences" element={<MightyMailSequences />} />
             <Route path="/mightymail/nightmare-inbox" element={<NightmareInbox />} />
             <Route path="/mightymail/inbox" element={<MightymailInbox />} />
+            <Route path="/design-desk" element={<DesignDesk />} />
             <Route path="/quote-drafts" element={<QuoteDrafts />} />
             <Route path="/ai-pipeline" element={<AIPipeline />} />
             {/* DISABLED: MightyChats frozen - Instagram/Email ingestion stopped */}

@@ -277,6 +277,24 @@ serve(async (req) => {
       }
     }
 
+    // Trigger file routing for file_submission emails
+    const fileSubmissions = results.filter(r => r.category === 'file_submission');
+    if (fileSubmissions.length > 0) {
+      console.log(`Triggering file routing for ${fileSubmissions.length} file submissions`);
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/mightymail-files`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({}),
+        });
+      } catch (e) {
+        console.error('File routing trigger failed:', e);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       processed,
