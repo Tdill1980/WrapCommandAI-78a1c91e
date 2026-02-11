@@ -31,7 +31,7 @@
     mode: scriptTag?.getAttribute('data-mode') || 'live',
     theme: scriptTag?.getAttribute('data-theme') || 'dark-pro',
     // Edge functions on YOUR Supabase (qxllysilzonrlyoaomce)
-    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/command-chat',
+    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/website-chat',
     statusUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-agent-status',
     artworkCheckUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-artwork-file',
     // YOUR Supabase anon key

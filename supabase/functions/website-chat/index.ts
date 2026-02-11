@@ -751,24 +751,34 @@ function calculateBulkDiscount(totalSqft: number): { discount: number; discountP
 // ============================================
 // JORDAN'S PERSONA - WITH CRITICAL RULES
 // ============================================
-const JORDAN_PERSONA = `You are Jordan, customer service at WePrintWraps.
+const JORDAN_PERSONA = `You are Jordan Lee — a real person on the WePrintWraps team. You've worked in the wrap industry for years and genuinely love helping people figure out their projects.
 
-VOICE - Sound like texting a coworker:
-- Short sentences
-- "For sure" not "Absolutely, I'd be happy to help"
-- "Nice!" not "Great choice!"
-- "Hit me up" not "Please don't hesitate to reach out"
-- "What's your email?" not "Could you please provide your email address?"
-- NO corporate speak, NO robotic language
-- NO emojis except maybe 📧 when sending quote
-- 1-3 sentences max per response
+HOW YOU TALK — Like a real human, not a chatbot:
+- Talk like you're texting a friend who asked about wraps
+- Use contractions: "you're", "I'll", "that's", "we've"
+- Vary your responses — never repeat the same phrase twice
+- Say things like "oh nice", "for sure", "yeah totally", "honestly", "no worries"
+- NEVER say: "Absolutely!", "I'd be happy to help!", "Great question!", "Is there anything else I can assist you with?"
+- NEVER use bullet points or numbered lists unless giving a quote breakdown
+- NO corporate speak. NO chatbot energy. If it sounds like a template, rewrite it.
+- Keep responses 1-4 sentences. Conversational, not essays.
+- Match the customer's energy — if they're casual, be casual. If they're detailed, be detailed.
+- It's OK to use "haha", "lol", or crack a small joke if it fits
+- Use lowercase sometimes, like real texting. Don't over-capitalize.
+
+PERSONALITY:
+- Friendly but not fake
+- Knowledgeable but not preachy
+- Direct — get to the point fast
+- If you don't know something, say "let me check on that" or "good question, let me find out"
+- Show genuine enthusiasm about cool projects ("oh man a Cybertruck wrap? that's gonna look sick")
 
 FLOW (SKIP steps if info already provided in CUSTOMER STATE below):
-1. If name is ❌ NOT CAPTURED → "For sure! What's your name?"
-2. If name captured but no vehicle → "Hey [name]! What are you looking to wrap?"
-3. If vehicle captured but email is ❌ NOT CAPTURED → "Nice! What's your email? I'll get you a quote."
-4. If name + email + vehicle all captured → Give price immediately! Then ask for shop name and phone.
-5. After quote sent → "Done! Quote's in your inbox. Hit me up if you need anything!"
+1. If name is ❌ NOT CAPTURED → "hey! what's your name?"
+2. If name captured but no vehicle → "what vehicle are you wrapping?"
+3. If vehicle captured but email is ❌ NOT CAPTURED → "nice — what's your email? I'll shoot you a quote"
+4. If name + email + vehicle all captured → Give price right away. Then ask for shop name/phone.
+5. After quote sent → "done! check your inbox. hit me up if you need anything"
 
 IMPORTANT: If name AND email are already in CUSTOMER STATE, SKIP straight to helping with their question!
 
@@ -776,15 +786,15 @@ PRICE FORMAT - CRITICAL:
 Always clearly state whether roof is included or excluded!
 
 DEFAULT (excludes roof):
-"[Vehicle] wrap is **$[PRICE]** ([SQFT] sqft - excludes roof).
-Want the full wrap including roof? That's **$[FULL_PRICE]** ([FULL_SQFT] sqft).
+"[Vehicle] wrap runs about **$[PRICE]** for [SQFT] sqft (that's without the roof).
+want the whole thing including roof? that'd be **$[FULL_PRICE]** for [FULL_SQFT] sqft.
 
-Order here: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/"
+order here: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/"
 
 FULL WRAP (includes roof):
-"[Vehicle] FULL wrap including roof is **$[PRICE]** ([SQFT] sqft).
+"full wrap on the [Vehicle] including roof — **$[PRICE]** for [SQFT] sqft.
 
-Order here: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/"
+order here: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/"
 
 ALWAYS mention:
 - The sqft being quoted
@@ -792,11 +802,11 @@ ALWAYS mention:
 - Offer the alternative option
 
 RULES:
-- We PRINT and SHIP only - no installation
+- We PRINT and SHIP only - no installation. If asked, say "nah we're a print shop — we print and ship it to you. you'll need a local installer but I can help you find one if you want"
 - $5.27/sqft for Avery and 3M (same price)
 - Free shipping over $750
 - File upload: https://weprintwraps.com/pages/upload-artwork
-- Keep it short and casual
+- Keep it conversational
 `;
 
 // ============================================
@@ -808,7 +818,7 @@ serve(async (req) => {
   }
 
   try {
-    const { org, agent, mode, session_id, message_text, page_url, referrer, geo, attachments, customer_name, customer_email } = await req.json();
+    const { org, agent, mode, session_id, message_text, page_url, referrer, geo, attachments, customer_name, customer_email, customer_phone } = await req.json();
 
     if (!message_text || !session_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -856,6 +866,7 @@ serve(async (req) => {
       // Pre-populate with onboarding data if provided and not already set
       if (customer_name && !chatState.customer_name) chatState.customer_name = customer_name;
       if (customer_email && !chatState.customer_email) chatState.customer_email = customer_email;
+      if (customer_phone && !chatState.customer_phone) chatState.customer_phone = customer_phone;
       // DEBUG: Log chatState persistence
       console.log('[JordanLee] Session:', { session_id, found: true });
       console.log('[JordanLee] Loaded state:', JSON.stringify(chatState));
@@ -864,13 +875,14 @@ serve(async (req) => {
       // Pre-populate chatState with onboarding data if provided
       if (customer_name) chatState.customer_name = customer_name;
       if (customer_email) chatState.customer_email = customer_email;
+      if (customer_phone) chatState.customer_phone = customer_phone;
 
       const { data: newConv, error: convError } = await supabase
         .from('conversations')
         .insert({
           channel: 'website',
           status: 'active',
-          organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf', // FIXED: Correct WPW org ID
+          organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
           metadata: { session_id, page_url, referrer, geo },
           chat_state: chatState
         })
@@ -885,6 +897,62 @@ serve(async (req) => {
         }), { status: 500, headers: corsHeaders });
       }
       conversationId = newConv.id;
+    }
+
+    // ============================================
+    // CREATE/LINK CONTACT — Wire to MightyCustomer CMS
+    // ============================================
+    const contactEmail = customer_email || chatState.customer_email;
+    if (contactEmail) {
+      try {
+        // Check if contact already exists
+        const { data: existingContacts } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('email', contactEmail.toLowerCase())
+          .limit(1);
+
+        let contactId: string | null = null;
+
+        if (existingContacts && existingContacts.length > 0) {
+          contactId = existingContacts[0].id;
+          // Update contact with latest info
+          await supabase
+            .from('contacts')
+            .update({
+              name: customer_name || chatState.customer_name || undefined,
+              phone: customer_phone || chatState.customer_phone || undefined,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', contactId);
+        } else {
+          // Create new contact
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
+              name: customer_name || chatState.customer_name || 'Website Visitor',
+              email: contactEmail.toLowerCase(),
+              phone: customer_phone || chatState.customer_phone || null,
+              source: 'website_chat'
+            })
+            .select('id')
+            .single();
+          contactId = newContact?.id || null;
+          console.log('[JordanLee] Created contact:', contactId);
+        }
+
+        // Link contact to conversation
+        if (contactId) {
+          await supabase
+            .from('conversations')
+            .update({ contact_id: contactId })
+            .eq('id', conversationId);
+          console.log('[JordanLee] Linked contact', contactId, 'to conversation', conversationId);
+        }
+      } catch (e) {
+        console.error('[JordanLee] Contact creation error:', e);
+      }
     }
 
     // Save inbound message with attachments - WITH ERROR HANDLING
@@ -1714,7 +1782,11 @@ CRITICAL PRICING RULES:
           chatState.quote_sent = true;
           
           // SAVE QUOTE via direct REST API call (uses anon key - works without service role)
-          const quoteNumber = 'WPW-CHAT-' + Date.now();
+          // Generate proper quote number (matches create-quote-from-chat format)
+          const _qd = new Date();
+          const _qs = _qd.toISOString().slice(2, 10).replace(/-/g, '');
+          const _qr = Math.random().toString(36).substring(2, 6).toUpperCase();
+          const quoteNumber = `WPW-${_qs}-${_qr}`;
           // Use Supabase env vars directly since this runs on WPW Supabase
           const wpwUrl = Deno.env.get('SUPABASE_URL') || 'https://qxllysilzonrlyoaomce.supabase.co';
           const wpwAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
