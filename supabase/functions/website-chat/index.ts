@@ -1909,10 +1909,15 @@ ${WPW_KNOWLEDGE.contact}`;
             });
           }
         }
-        // Add current message
-        messages.push({ role: 'user', content: message_text });
+        // Add current message (deduplicate if already present from recent history)
+        const lastMsg = messages[messages.length - 1];
+        if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== message_text) {
+          messages.push({ role: 'user', content: message_text });
+        }
 
         const systemPrompt = `${JORDAN_PERSONA}
+
+${WPW_IDENTITY}
 
 CURRENT CONTEXT:
 ${contextNotes}
@@ -1973,7 +1978,8 @@ Just help them and send quote to their email. NEVER say "What is your name/email
             aiReply = aiData.content[0].text;
           }
         } else {
-          console.error('[JordanLee] Anthropic API error:', aiResponse.status);
+          const errorBody = await aiResponse.text();
+          console.error('[JordanLee] Anthropic API error:', aiResponse.status, errorBody);
         }
       } catch (e) {
         console.error('[JordanLee] AI error:', e);
