@@ -77,6 +77,7 @@ import DesignGenerator from "./modules/designpanelpro-enterprise/pages/DesignGen
 import WebsiteAgentAdmin from "./pages/WebsiteAgentAdmin";
 import WebsiteAdmin from "./pages/WebsiteAdmin";
 import ChatWidgetDemo from "./pages/ChatWidgetDemo";
+import TestChat from "./pages/TestChat";
 import InstagramTokenExchange from "./pages/InstagramTokenExchange";
 import InstagramSettings from "./pages/settings/InstagramSettings";
 import PhoneSettings from "./pages/settings/PhoneSettings";
@@ -134,6 +135,7 @@ const App = () => (
           <Routes>
             {/* Embed route - no layout, for iframe embedding */}
             <Route path="/embed/chat" element={<EmbedChat />} />
+            <Route path="/test-chat" element={<TestChat />} />
             
             <Route path="/signup" element={<Signup />} />
             <Route path="/beta/signup" element={<BetaSignup />} />
