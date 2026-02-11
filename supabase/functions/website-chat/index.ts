@@ -1,8 +1,8 @@
 // =====================================================
-// ⚠️⚠️⚠️ LOCKED - DO NOT MODIFY - FINAL V3.1 ⚠️⚠️⚠️
+// ⚠️⚠️⚠️ LOCKED - DO NOT MODIFY - FINAL V3.2 ⚠️⚠️⚠️
 // =====================================================
-// Last Updated: February 5, 2026
-// VERSION: 3.1 - Anthropic API + External Supabase
+// Last Updated: February 11, 2026
+// VERSION: 3.2 - OpenAI API + External Supabase
 //
 // FEATURES (LOCKED - ALL 13 CONFIRMED):
 // 1. ✅ PRINT ONLY - NO INSTALLATION enforced
@@ -19,7 +19,7 @@
 // 12. ✅ All product URLs
 // 13. ✅ NO coupon codes
 //
-// AI PROVIDER: Anthropic API (claude-3-5-haiku-20241022)
+// AI PROVIDER: OpenAI API (gpt-4o)
 // DATABASE: External Supabase (EXTERNAL_SUPABASE_URL)
 // ORG ID: 51aa96db-c06d-41ae-b3cb-25b045c75caf
 //
@@ -1885,11 +1885,11 @@ ${WPW_KNOWLEDGE.guarantee}
 ${WPW_KNOWLEDGE.specs}
 ${WPW_KNOWLEDGE.contact}`;
 
-    // Call AI using Anthropic API
+    // Call AI using OpenAI API
     let aiReply = "Hey! How can I help you today?";
 
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (anthropicApiKey) {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (openaiApiKey) {
       try {
         // Load message history from CURRENT conversation only (same session)
         // This prevents old vehicle data from bleeding in while keeping current context
@@ -1956,36 +1956,34 @@ Customer already provided: ${chatState.customer_name} / ${chatState.customer_ema
 Just help them and send quote to their email. NEVER say "What is your name/email"!
 ` : '📧 GATE ACTIVE: Get name + email BEFORE giving price!'}`;
 
-        // Use Anthropic API
-        const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        // Use OpenAI API
+        const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'x-api-key': anthropicApiKey,
-            'anthropic-version': '2023-06-01',
+            'Authorization': `Bearer ${openaiApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'gpt-4o',
             max_tokens: 600,
-            system: systemPrompt,
-            messages: messages
+            messages: [{ role: 'system', content: systemPrompt }, ...messages]
           })
         });
 
         if (aiResponse.ok) {
           const aiData = await aiResponse.json();
-          if (aiData.content?.[0]?.text) {
-            aiReply = aiData.content[0].text;
+          if (aiData.choices?.[0]?.message?.content) {
+            aiReply = aiData.choices[0].message.content;
           }
         } else {
           const errorBody = await aiResponse.text();
-          console.error('[JordanLee] Anthropic API error:', aiResponse.status, errorBody);
+          console.error('[JordanLee] OpenAI API error:', aiResponse.status, errorBody);
         }
       } catch (e) {
         console.error('[JordanLee] AI error:', e);
       }
     } else {
-      console.warn('[JordanLee] ANTHROPIC_API_KEY not configured');
+      console.warn('[JordanLee] OPENAI_API_KEY not configured');
     }
 
     // Generate AI Synopsis (every 3 messages or when key info captured)
@@ -1998,38 +1996,36 @@ Just help them and send quote to their email. NEVER say "What is your name/email
       (chatState.vehicle && !chatState.ai_summary) || // Vehicle captured
       (chatState.sqft && chatState.customer_email); // Quote ready
 
-    if (shouldGenerateSynopsis && anthropicApiKey) {
+    if (shouldGenerateSynopsis && openaiApiKey) {
       try {
-        const synopsisResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        const synopsisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'x-api-key': anthropicApiKey,
-            'anthropic-version': '2023-06-01',
+            'Authorization': `Bearer ${openaiApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'gpt-4o',
             max_tokens: 100,
-            system: `Generate a 1-line synopsis (max 15 words) of this customer chat. Focus on: what they're asking about, vehicle if mentioned, quote status. No emojis. Examples:
+            messages: [
+              { role: 'system', content: `Generate a 1-line synopsis (max 15 words) of this customer chat. Focus on: what they're asking about, vehicle if mentioned, quote status. No emojis. Examples:
 - "Quote request for 2024 F-150 full wrap, $1,470"
 - "Asking about maximum artwork dimensions for cut-contour graphics"
 - "Fleet inquiry: 5 Sprinter vans, needs bulk pricing"
-- "Design services question, wants custom wrap created"`,
-            messages: [{
-              role: 'user',
-              content: `Customer message: "${message_text}"
+- "Design services question, wants custom wrap created"` },
+              { role: 'user', content: `Customer message: "${message_text}"
 Vehicle: ${chatState.vehicle || 'Not mentioned'}
 SQFT: ${chatState.sqft || 'Unknown'}
 Quote: ${chatState.total_price ? '$' + chatState.total_price : 'Not given'}
-Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}`
-            }]
+Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}` }
+            ]
           })
         });
 
         if (synopsisResponse.ok) {
           const synopsisData = await synopsisResponse.json();
-          if (synopsisData.content?.[0]?.text) {
-            chatState.ai_summary = synopsisData.content[0].text.trim();
+          if (synopsisData.choices?.[0]?.message?.content) {
+            chatState.ai_summary = synopsisData.choices[0].message.content.trim();
             console.log('[JordanLee] Synopsis generated:', chatState.ai_summary);
           }
         }
