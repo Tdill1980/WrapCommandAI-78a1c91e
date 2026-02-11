@@ -2,7 +2,7 @@
 // ⚠️⚠️⚠️ LOCKED - DO NOT MODIFY - FINAL V3.1 ⚠️⚠️⚠️
 // =====================================================
 // Last Updated: February 5, 2026
-// VERSION: 3.2 - OpenAI API (gpt-4o) + External Supabase
+// VERSION: 3.3 - OpenAI API (gpt-4o) + Anthropic fallback + retry logic
 //
 // FEATURES (LOCKED - ALL 13 CONFIRMED):
 // 1. ✅ PRINT ONLY - NO INSTALLATION enforced
@@ -19,7 +19,7 @@
 // 12. ✅ All product URLs
 // 13. ✅ NO coupon codes
 //
-// AI PROVIDER: OpenAI API (gpt-4o)
+// AI PROVIDER: OpenAI API (gpt-4o) with Anthropic Claude fallback
 // DATABASE: External Supabase (EXTERNAL_SUPABASE_URL)
 // ORG ID: 51aa96db-c06d-41ae-b3cb-25b045c75caf
 //
@@ -32,6 +32,105 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { getVehicleSqFt, VehicleSqFtResult } from "../_shared/mighty-vehicle-sqft.ts";
+
+// ============================================
+// AI API RETRY + FALLBACK CONFIGURATION
+// ============================================
+// Retry with exponential backoff, then fall back to Anthropic if OpenAI is rate-limited
+async function callAIWithRetry(
+  openaiApiKey: string,
+  model: string,
+  maxTokens: number,
+  messages: Array<{ role: string; content: string }>,
+  maxRetries = 3
+): Promise<{ content: string | null; provider: string }> {
+  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+
+  // Try OpenAI with retries
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ model, max_tokens: maxTokens, messages })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content || null;
+        return { content, provider: `openai/${model}` };
+      }
+
+      const status = response.status;
+      const errorBody = await response.text();
+      console.error(`[AI Retry] OpenAI attempt ${attempt + 1}/${maxRetries} failed: ${status} ${errorBody}`);
+
+      // Only retry on 429 (rate limit) or 5xx (server error)
+      if (status !== 429 && status < 500) {
+        break; // Don't retry on 4xx errors (except 429)
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      if (attempt < maxRetries - 1) {
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.log(`[AI Retry] Waiting ${backoffMs}ms before retry...`);
+        await new Promise(r => setTimeout(r, backoffMs));
+      }
+    } catch (e) {
+      console.error(`[AI Retry] OpenAI attempt ${attempt + 1} network error:`, e);
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
+      }
+    }
+  }
+
+  // Fallback to Anthropic Claude if OpenAI exhausted
+  if (anthropicApiKey) {
+    console.log('[AI Retry] OpenAI exhausted, falling back to Anthropic Claude...');
+    try {
+      // Convert OpenAI message format to Anthropic format
+      const systemMsg = messages.find(m => m.role === 'system')?.content || '';
+      const chatMessages = messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }));
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': anthropicApiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5-20250929',
+          max_tokens: maxTokens,
+          system: systemMsg,
+          messages: chatMessages
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.content?.[0]?.text || null;
+        console.log('[AI Retry] Anthropic fallback succeeded');
+        return { content, provider: 'anthropic/claude-sonnet-4-5-20250929' };
+      }
+
+      const errorBody = await response.text();
+      console.error('[AI Retry] Anthropic fallback failed:', response.status, errorBody);
+    } catch (e) {
+      console.error('[AI Retry] Anthropic fallback error:', e);
+    }
+  } else {
+    console.warn('[AI Retry] No ANTHROPIC_API_KEY configured for fallback');
+  }
+
+  return { content: null, provider: 'none' };
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1956,31 +2055,18 @@ Customer already provided: ${chatState.customer_name} / ${chatState.customer_ema
 Just help them and send quote to their email. NEVER say "What is your name/email"!
 ` : '📧 GATE ACTIVE: Get name + email BEFORE giving price!'}`;
 
-        // Use OpenAI API
-        const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            max_tokens: 600,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...messages
-            ]
-          })
-        });
-
-        if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
-          if (aiData.choices?.[0]?.message?.content) {
-            aiReply = aiData.choices[0].message.content;
-          }
+        // Use OpenAI API with retry + Anthropic fallback
+        const aiResult = await callAIWithRetry(
+          openaiApiKey,
+          'gpt-4o',
+          600,
+          [{ role: 'system', content: systemPrompt }, ...messages]
+        );
+        if (aiResult.content) {
+          aiReply = aiResult.content;
+          console.log(`[JordanLee] AI response via ${aiResult.provider}`);
         } else {
-          const errorBody = await aiResponse.text();
-          console.error('[JordanLee] OpenAI API error:', aiResponse.status, errorBody);
+          console.error('[JordanLee] All AI providers failed for chat response');
         }
       } catch (e) {
         console.error('[JordanLee] AI error:', e);
@@ -2001,36 +2087,29 @@ Just help them and send quote to their email. NEVER say "What is your name/email
 
     if (shouldGenerateSynopsis && openaiApiKey) {
       try {
-        const synopsisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            max_tokens: 100,
-            messages: [
-              { role: 'system', content: `Generate a 1-line synopsis (max 15 words) of this customer chat. Focus on: what they're asking about, vehicle if mentioned, quote status. No emojis. Examples:
+        // Synopsis uses gpt-4o-mini (cheaper, higher rate limits - this is a simple summarization task)
+        const synopsisResult = await callAIWithRetry(
+          openaiApiKey,
+          'gpt-4o-mini',
+          100,
+          [
+            { role: 'system', content: `Generate a 1-line synopsis (max 15 words) of this customer chat. Focus on: what they're asking about, vehicle if mentioned, quote status. No emojis. Examples:
 - "Quote request for 2024 F-150 full wrap, $1,470"
 - "Asking about maximum artwork dimensions for cut-contour graphics"
 - "Fleet inquiry: 5 Sprinter vans, needs bulk pricing"
 - "Design services question, wants custom wrap created"` },
-              { role: 'user', content: `Customer message: "${message_text}"
+            { role: 'user', content: `Customer message: "${message_text}"
 Vehicle: ${chatState.vehicle || 'Not mentioned'}
 SQFT: ${chatState.sqft || 'Unknown'}
 Quote: ${chatState.total_price ? '$' + chatState.total_price : 'Not given'}
 Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}` }
-            ]
-          })
-        });
+          ],
+          2 // fewer retries for synopsis (non-critical)
+        );
 
-        if (synopsisResponse.ok) {
-          const synopsisData = await synopsisResponse.json();
-          if (synopsisData.choices?.[0]?.message?.content) {
-            chatState.ai_summary = synopsisData.choices[0].message.content.trim();
-            console.log('[JordanLee] Synopsis generated:', chatState.ai_summary);
-          }
+        if (synopsisResult.content) {
+          chatState.ai_summary = synopsisResult.content.trim();
+          console.log(`[JordanLee] Synopsis generated via ${synopsisResult.provider}:`, chatState.ai_summary);
         }
       } catch (e) {
         console.error('[JordanLee] Synopsis generation error:', e);
