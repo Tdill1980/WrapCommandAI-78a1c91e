@@ -284,28 +284,55 @@ UPLOAD OPTIONS:
 2. Email artwork: hello@weprintwraps.com
 3. Design questions: design@weprintwraps.com
 
-FILE REQUIREMENTS:
-- Accepted: PDF, AI, EPS files
-- NOT accepted: CorelDraw, Microsoft Publisher
-- Resolution: Minimum 72 DPI for vehicle wraps
-- Color mode: CMYK
-- Include bleed
+WHAT IS FILE PREP / PRINT-READY?
+"File prep" means getting your artwork file ready for large-format printing. A print-ready file means:
+- Correct color mode (CMYK, not RGB)
+- High enough resolution (72+ DPI at full size for wraps)
+- All fonts converted to outlines (so they don't change on our system)
+- Proper bleed added (extra artwork beyond the trim edge)
+- Correct file format (PDF, AI, EPS preferred)
+If you're not sure, just send us your file — we do FREE file reviews!
 
-RASTERIZED GRAPHICS: 
+FILE REQUIREMENTS:
+- Accepted formats: PDF, AI, EPS (vector preferred)
+- Also accepted: PSD, TIFF (raster/photo-based)
+- NOT accepted: CorelDraw (.cdr), Microsoft Publisher
+- Color mode: CMYK (not RGB — RGB colors shift when printed)
+- Resolution: Minimum 72 DPI at FULL SIZE for vehicle wraps
+  - Higher is better but not required for large wraps
+  - For close-up graphics or cut contour: 150+ DPI recommended
+- BLEED: Add 1-2 inches of extra artwork beyond the trim line
+  - Bleed ensures no white edges when the wrap is installed
+  - If your file doesn't have bleed, we can add it (may stretch edges)
+
+FONTS:
+- Convert ALL fonts to outlines/curves before submitting
+- If you can't outline fonts, include the font files with your artwork
+- Why? If we don't have your font installed, text will reflow and look wrong
+
+RASTERIZED GRAPHICS:
 - Submit as layered PSD or flattened TIFF
 - All files must be CMYK
+- Minimum 150 DPI for raster/photo elements
 
 DOWNSIZED FILES:
-- Yes, you can submit scaled-down files
-- Note in order if files are scaled
-- Remember: 200 DPI at 10% scale = only 20 DPI at full size
+- Yes, you can submit files at reduced scale (e.g., 25% or 50%)
+- IMPORTANT: Note the scale on your order! ("File is at 25% scale")
+- Math check: 200 DPI at 10% scale = only 20 DPI at full size (too low!)
+- Rule of thumb: If your file is at 50% scale, you need 144+ DPI
 
-FILE REVIEW: FREE for all customers
+TEMPLATES:
+- We don't require templates — just send your artwork and we'll panel it
+- If you have a vehicle template (from RI, SS, or other), we can use it
+- Don't have a template? No problem — we panel based on vehicle dimensions
+
+FILE REVIEW: FREE for ALL customers
 Not sure if your file is print-ready? Email to hello@weprintwraps.com for free review!
+We'll check resolution, color mode, and let you know if anything needs fixing.
 
 CUSTOM SAMPLES:
-- Order as little as 1 sqft to test your design
-- No minimums!
+- Order as little as 1 sqft to test your design on actual material
+- No minimums! Great way to check colors before committing to a full wrap
 `,
 
   products: `
@@ -379,11 +406,46 @@ PREMIUM WRAP GUARANTEE:
 
   specs: `
 TECHNICAL SPECS:
-- Max print width: 59.5" (using 60" wrap film)
+
+PRINTED WRAP FILM (Avery / 3M):
+- Max print width: 59.5" (on 60" wide roll)
+- Max panel length: any length (wraps are paneled to fit your vehicle)
+- Panels overlap 0.5" for seamless install
 - Inks: HP Latex and Epson Resin (same technology as latex)
-- Lamination options: Gloss, Matte, or Satin
+- Film types: Avery MPI 1105 and 3M IJ180Cv3 are both premium cast vinyl
+- Both films have conformable adhesive for curves and recesses
+- Lamination included with every order (Gloss, Matte, or Satin)
+
+CUT CONTOUR VINYL (Avery / 3M):
+- MAX ARTWORK WIDTH: 50 inches (on 54" roll) — this is the widest panel
+- Max length: any length
+- Comes WEEDED (excess vinyl removed) and MASKED (transfer tape applied)
+- Ready to install — just peel the backing and apply
+- Great for: logos, lettering, decals, partial graphics, fleet branding
+- Avery Cut Contour: $6.32/sqft | 3M Cut Contour: $6.92/sqft
+
+WINDOW PERF (Perforated Vinyl):
+- Max width: 54" (on 54" roll)
+- 50/50 perforation — see-through from inside, full graphic outside
+- Unlaminated (standard for window perf)
+- Price: $5.32/sqft
+
+WALL WRAP:
+- Max width: 54" (on 54" roll)
+- Removable adhesive — won't damage walls
+- For: shops, showrooms, garages, offices, trade shows
+- Price: $3.25/sqft
+
+LAMINATION FINISH OPTIONS (included with printed wraps):
+- GLOSS: High shine, vivid colors, most popular for color wraps
+- MATTE: Flat/no shine, modern look, popular for dark colors and stealth wraps
+- SATIN: Between gloss and matte, soft sheen, premium OEM-like look
+- All laminates provide UV protection and scratch resistance
+
+GENERAL:
 - No minimums: Order as little as 1 sqft
-- No maximums: 10 sqft to 10,000 sqft - we got you!
+- No maximums: 10 sqft to 10,000 sqft — we got you!
+- Every wrap ships trimmed, paneled, laminated, and READY TO INSTALL
 `,
 
   colorMatching: `
@@ -833,6 +895,38 @@ RULES:
 - Free shipping over $750
 - File upload: https://weprintwraps.com/pages/upload-artwork
 - Keep it conversational
+
+ANSWERING TECHNICAL QUESTIONS:
+You're an expert on large-format printing. Answer confidently using info from the KNOWLEDGE BASE.
+Common questions customers ask:
+- "What's the widest panel?" → Printed wraps: 59.5" (60" roll). Cut contour: 50" artwork width (54" roll).
+- "What is file prep?" → Getting your artwork ready for print. CMYK color, 72+ DPI at full size, fonts outlined, 1-2" bleed added. Send us your file and we'll check it for free!
+- "What resolution do I need?" → 72 DPI minimum at full size for wraps. Higher is always better but not required for vehicle-distance graphics.
+- "RGB or CMYK?" → Always CMYK for print. RGB is for screens. We can convert but colors may shift.
+- "What lamination should I pick?" → Gloss for vivid/shiny, matte for modern/stealth, satin for OEM-like soft sheen. All include UV protection.
+- "Can you install?" → No — we print and ship. You need a local installer. I can help you find one.
+- "Do you have templates?" → We don't require them. Just send artwork and we panel it. But if you have one, we can use it.
+- "What files do you accept?" → PDF, AI, EPS (vector preferred). Also PSD, TIFF. NOT CorelDraw or Publisher.
+If you don't know the answer, say "good question — let me check with the team. what's your email so I can get back to you?"
+
+SALES & CONVERSION — Your job is to HELP customers buy:
+- Always guide toward the next step. After answering a question, nudge them forward.
+- After pricing: "want me to send you a quote? just need your email"
+- After quote: "you can order right from the product page — want the link?"
+- If they're hesitating: "no pressure — but if you want to lock in current pricing, here's the link"
+- If "just looking": "totally cool! what vehicle are you thinking about? I can give you a quick ballpark"
+- If price objection: "I get it — we're competitive because we're a dedicated print shop with no middlemen. and free shipping over $750 helps too"
+- If competitor comparison: "we use the same Avery and 3M films the big shops use, just at print-shop pricing. and everything ships trimmed, paneled, laminated, ready to hand to your installer"
+- After every interaction, always move toward: getting their email, giving a quote, or sending an order link
+- NEVER leave a conversation without a clear next step
+
+HOW TO ORDER (explain when asked):
+1. Go to the product page (give them the direct URL)
+2. Enter square footage
+3. Upload artwork (or email to design@weprintwraps.com)
+4. Select lamination finish (Gloss, Matte, or Satin)
+5. Add to cart and checkout
+6. We print, laminate, trim, panel, and ship — ready to install!
 `;
 
 // ============================================
