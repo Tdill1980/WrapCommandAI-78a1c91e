@@ -107,26 +107,43 @@ Deno.serve(async (req) => {
         created_at: conv.created_at,
         updated_at: conv.updated_at,
         last_message_at: conv.last_message_at,
+        contact_id: conv.contact_id || null,
         // MESSAGES - critical for message count display
         messages: messages,
         // Extract customer info from chat_state
         customer_name: chatState.customer_name || chatState.name || null,
         customer_email: chatState.customer_email || chatState.email || null,
         customer_phone: chatState.customer_phone || chatState.phone || null,
+        shop_name: chatState.shop_name || null,
         // Vehicle info
         vehicle: chatState.vehicle || null,
+        vehicle_year: chatState.vehicle_year || null,
+        sqft: chatState.sqft || null,
+        // Product & quote info
+        product_name: chatState.product_name || null,
+        product_key: chatState.product_key || null,
+        finish_type: chatState.finish_type || null,
+        quoted_price: chatState.quoted_price || chatState.total_price || null,
+        quote_id: chatState.quote_id || null,
+        quote_sent: chatState.quote_sent || false,
+        vehicle_count: chatState.vehicle_count || null,
         // Conversation state
         stage: chatState.stage || "initial",
         intent: chatState.intent || null,
         // Escalation tracking
         escalations_sent: chatState.escalations_sent || [],
-        escalation_sent: chatState.escalation_sent || null, // Legacy field
+        escalation_sent: chatState.escalation_sent || null,
+        unhappy_flagged: chatState.unhappy_flagged || false,
+        // Bulk/fleet info
+        bulk_vehicle_count: chatState.bulk_vehicle_count || null,
+        bulk_vehicle_types: chatState.bulk_vehicle_types || null,
         // Message preview from chat_state
         last_message: chatState.last_message || chatState.last_customer_message || null,
         ai_summary: chatState.ai_summary || null,
         // Session info from metadata
         session_id: metadata.session_id || null,
         page_url: metadata.page_url || null,
+        geo: metadata.geo || null,
         // Full objects for detailed view
         chat_state: chatState,
         metadata: metadata,

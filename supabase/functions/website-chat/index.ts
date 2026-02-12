@@ -402,6 +402,32 @@ CONTACT INFO:
 - Design Team: design@weprintwraps.com
 - Phone: (833) 335-1382 or 602-595-3200
 - Address: 15802 N. Cave Creek Rd. Suite 3, Phoenix, AZ 85032
+`,
+
+  howToOrder: `
+HOW TO ORDER (IMPORTANT - Explain when customer asks how to buy/order/checkout):
+
+STEP BY STEP:
+1. Go to the product page (give them the direct link)
+2. Enter your square footage in the "Square Footage" field
+3. Upload your artwork file (PDF, AI, or EPS preferred)
+   - Or email artwork to design@weprintwraps.com with your order number
+4. Select your lamination finish: Gloss, Matte, or Satin
+5. Add to cart and complete checkout
+6. That's it! We'll print, laminate, trim, panel, and ship it to you
+
+DON'T HAVE ARTWORK?
+- Free file review: Email your file to hello@weprintwraps.com
+- Need a design? Custom wrap design is $750
+- Upload artwork later: https://weprintwraps.com/pages/upload-artwork
+
+WHAT YOU RECEIVE:
+- Printed wrap film, trimmed and paneled
+- Laminated with your chosen finish
+- Rolled in heavy-duty shipping tubes
+- Ready to hand to your installer
+
+IMPORTANT: We PRINT and SHIP only. Customer arranges local installation.
 `
 };
 
@@ -1705,7 +1731,21 @@ DO NOT give price until you have name + email!`;
           const roofPrice = Math.round(roofSqft * pricePerSqft);
 
           const freeShip = price >= 750 ? '🎉 FREE shipping included!' : '';
-          const productUrl = 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/';
+          // Dynamic product URL based on detected product
+          const chatProductUrlMap: Record<string, string> = {
+            'avery_wrap': 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/',
+            '3m_wrap': 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/',
+            'threem_wrap': 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/',
+            'window_perf': 'https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/',
+            'avery_contour': 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+            'cut_avery': 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+            'threem_contour': 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+            'cut_3m': 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+            'wall_wrap': 'https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/',
+            'custom_design': 'https://weprintwraps.com/our-products/custom-wrap-design/',
+            'fadewraps': 'https://weprintwraps.com/our-products/pre-designed-fade-wraps/',
+          };
+          const productUrl = chatProductUrlMap[chatState.product_key || 'avery_wrap'] || 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/';
 
           let vehicleDisplay = chatState.vehicle || '';
           if (chatState.vehicle_year) vehicleDisplay = `${chatState.vehicle_year} ${vehicleDisplay}`;
@@ -1940,7 +1980,72 @@ Pick ONE that makes sense for their project. Keep it casual — just a quick men
             try {
               const vehicleLabel = `${chatState.vehicle_year || ''} ${chatState.vehicle || vehicleDisplay}`.trim();
               const sqftValue = chatState.sqft || defaultSqft;
-              const cartUrl = 'https://weprintwraps.com/our-products/';
+              const emailFinishType = chatState.finish_type || 'Gloss';
+              const emailProductKey = chatState.product_key || 'avery_wrap';
+
+              // Product URL map
+              const productUrlMap: Record<string, string> = {
+                'avery_wrap': 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/',
+                '3m_wrap': 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/',
+                'threem_wrap': 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/',
+                'window_perf': 'https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/',
+                'avery_contour': 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+                'cut_avery': 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+                'threem_contour': 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+                'cut_3m': 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/',
+                'wall_wrap': 'https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/',
+                'custom_design': 'https://weprintwraps.com/our-products/custom-wrap-design/',
+                'fadewraps': 'https://weprintwraps.com/our-products/pre-designed-fade-wraps/',
+              };
+              const orderUrl = productUrlMap[emailProductKey] || 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/';
+
+              // Product display name for email
+              const emailProductNameMap: Record<string, string> = {
+                'avery_wrap': 'Avery MPI 1105 with DOL 1460Z Lamination',
+                '3m_wrap': '3M IJ180Cv3 with 8518 Lamination',
+                'threem_wrap': '3M IJ180Cv3 with 8518 Lamination',
+                'window_perf': 'Perforated Window Vinyl 50/50',
+                'avery_contour': 'Avery Cut Contour Vinyl (Weeded & Masked)',
+                'cut_avery': 'Avery Cut Contour Vinyl (Weeded & Masked)',
+                'threem_contour': '3M Cut Contour Vinyl (Weeded & Masked)',
+                'cut_3m': '3M Cut Contour Vinyl (Weeded & Masked)',
+                'wall_wrap': 'Wall Wrap Printed Vinyl',
+                'custom_design': 'Custom Vehicle Wrap Design',
+              };
+              const emailProductName = emailProductNameMap[emailProductKey] || 'Avery MPI 1105 with DOL 1460Z Lamination';
+
+              // Rotating upsell (deterministic by quote ID)
+              const upsellNum = chatState.quote_id ? parseInt(String(chatState.quote_id).slice(-2), 16) % 4 : Date.now() % 4;
+              let upsellHtml = '';
+              if (upsellNum === 0) {
+                upsellHtml = `
+                <div style="padding:20px 24px;background:#fef3f8;border-left:4px solid #e6007e;">
+                  <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;">Need window coverage?</div>
+                  <div style="font-size:13px;color:#6b7280;">Perforated Window Vinyl — see-through from inside, full graphics outside. $5.32/sq ft</div>
+                  <a href="https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/" style="display:inline-block;margin-top:8px;font-size:13px;color:#e6007e;font-weight:600;text-decoration:none;">Add Window Perf →</a>
+                </div>`;
+              } else if (upsellNum === 1) {
+                upsellHtml = `
+                <div style="padding:20px 24px;background:#fef3f8;border-left:4px solid #e6007e;">
+                  <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;">Need logos or decals?</div>
+                  <div style="font-size:13px;color:#6b7280;">Cut Contour Vinyl — weeded, masked, ready to install. $6.32/sq ft (Avery) or $6.92/sq ft (3M)</div>
+                  <a href="https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/" style="display:inline-block;margin-top:8px;font-size:13px;color:#e6007e;font-weight:600;text-decoration:none;">Add Cut Contour →</a>
+                </div>`;
+              } else if (upsellNum === 2) {
+                upsellHtml = `
+                <div style="padding:20px 24px;background:#fef3f8;border-left:4px solid #e6007e;">
+                  <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;">Got walls to wrap?</div>
+                  <div style="font-size:13px;color:#6b7280;">Wall Wrap Vinyl — perfect for shops, showrooms, and garages. Only $3.25/sq ft</div>
+                  <a href="https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/" style="display:inline-block;margin-top:8px;font-size:13px;color:#e6007e;font-weight:600;text-decoration:none;">Add Wall Wrap →</a>
+                </div>`;
+              } else {
+                upsellHtml = `
+                <div style="padding:20px 24px;background:#fef3f8;border-left:4px solid #e6007e;">
+                  <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px;">Need wrap design help?</div>
+                  <div style="font-size:13px;color:#6b7280;">Our design team creates custom vehicle wrap designs from scratch. Full custom design — $750</div>
+                  <a href="https://weprintwraps.com/our-products/custom-wrap-design/" style="display:inline-block;margin-top:8px;font-size:13px;color:#e6007e;font-weight:600;text-decoration:none;">Get Custom Design →</a>
+                </div>`;
+              }
 
               const emailHtml = `
 <!DOCTYPE html>
@@ -1948,29 +2053,48 @@ Pick ONE that makes sense for their project. Keep it casual — just a quick men
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f6f7f9;font-family:Inter,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;">
-    <div style="background:#000000;padding:16px 24px;">
+    <div style="background:#000000;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
       <div style="font-size:16px;font-weight:600;color:#ffffff;">WePrintWraps.com Quote</div>
+      <div style="font-size:12px;color:#9ca3af;">${quoteNumber}</div>
     </div>
     <div style="background:#ffffff;color:#111827;font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.5;">
       <div style="padding:24px;">
-        <a href="${cartUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Add This Quote to Cart</a>
+        <div style="font-size:18px;font-weight:700;color:#111827;margin-bottom:4px;">Hey ${chatState.customer_name || 'there'}!</div>
+        <div style="font-size:14px;color:#6b7280;">Here's your wrap quote. Ready when you are.</div>
       </div>
-      <div style="padding:0 24px 24px 24px;">
+      <div style="padding:0 24px 20px 24px;">
         <div style="font-size:13px;color:#6b7280;">Estimated Total</div>
-        <div style="font-size:26px;font-weight:700;color:#111827;">$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        <div style="font-size:13px;color:#6b7280;">~${sqftValue} sq ft × $5.27 / sq ft</div>
+        <div style="font-size:28px;font-weight:700;color:#111827;">$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div style="font-size:13px;color:#6b7280;">~${sqftValue} sq ft × $${(chatState.product_price || 5.27).toFixed(2)} / sq ft</div>
       </div>
       <div style="padding:0 24px 24px 24px;">
-        <div style="font-size:13px;color:#111827;font-weight:600;margin-bottom:4px;">Project Details</div>
-        <div style="font-size:13px;color:#6b7280;">
-          <strong>Vehicle:</strong> ${vehicleLabel}<br/>
-          <strong>Coverage:</strong> ${sqftValue} sq ft<br/>
-          <strong>Material:</strong> Premium Cast Vinyl<br/>
-          <em style="color:#9ca3af;">Printed wrap material only. Installation not included.</em>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="padding:8px 0;color:#6b7280;width:120px;">Vehicle</td><td style="padding:8px 0;color:#111827;font-weight:600;">${vehicleLabel}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Coverage</td><td style="padding:8px 0;color:#111827;">${sqftValue} sq ft ${chatState.include_roof ? '(includes roof)' : '(excludes roof)'}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Material</td><td style="padding:8px 0;color:#111827;">${emailProductName}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Finish</td><td style="padding:8px 0;color:#111827;">${emailFinishType} Lamination</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Qty</td><td style="padding:8px 0;color:#111827;">${chatState.vehicle_count || 1} vehicle(s)</td></tr>
+          ${price >= 750 ? '<tr><td style="padding:8px 0;color:#6b7280;">Shipping</td><td style="padding:8px 0;color:#22c55e;font-weight:600;">FREE (orders $750+)</td></tr>' : ''}
+        </table>
+      </div>
+      <div style="padding:0 24px 24px 24px;">
+        <a href="${orderUrl}" style="display:inline-block;padding:14px 24px;background:#e6007e;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;font-size:15px;">Order Now →</a>
+        <div style="margin-top:8px;font-size:12px;color:#9ca3af;">Click to add to cart on WePrintWraps.com</div>
+      </div>
+      <div style="padding:0 24px 8px 24px;">
+        <div style="font-size:12px;font-weight:600;color:#111827;margin-bottom:8px;">How to Order:</div>
+        <div style="font-size:12px;color:#6b7280;line-height:1.6;">
+          1. Click "Order Now" above to go to the product page<br/>
+          2. Enter your square footage (${sqftValue} sq ft)<br/>
+          3. Upload your artwork (or email to design@weprintwraps.com)<br/>
+          4. Choose your lamination finish (${emailFinishType})<br/>
+          5. Add to cart and checkout — that's it!
         </div>
       </div>
-      <div style="padding:24px;background:#f6f7f9;font-size:12px;color:#6b7280;text-align:center;">
-        Questions? Reply to this email or contact <a href="mailto:hello@weprintwraps.com" style="color:#2563eb;">hello@weprintwraps.com</a><br/><br/>
+      ${upsellHtml}
+      <div style="padding:20px 24px;font-size:12px;color:#9ca3af;"><em>Printed wrap material only — trimmed, paneled, laminated, and ready to install. Customer arranges local installation.</em></div>
+      <div style="padding:20px 24px;background:#f6f7f9;font-size:12px;color:#6b7280;text-align:center;">
+        Questions? Reply to this email or contact <a href="mailto:hello@weprintwraps.com" style="color:#e6007e;">hello@weprintwraps.com</a> | (833) 335-1382<br/><br/>
         — The WePrintWraps.com Team
       </div>
     </div>
@@ -2119,7 +2243,8 @@ ${WPW_KNOWLEDGE.fileUpload}
 ${WPW_KNOWLEDGE.turnaround}
 ${WPW_KNOWLEDGE.guarantee}
 ${WPW_KNOWLEDGE.specs}
-${WPW_KNOWLEDGE.contact}`;
+${WPW_KNOWLEDGE.contact}
+${WPW_KNOWLEDGE.howToOrder}`;
 
     // Call AI using OpenAI API
     let aiReply = "Hey! How can I help you today?";
