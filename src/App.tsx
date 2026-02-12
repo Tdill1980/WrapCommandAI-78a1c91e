@@ -53,8 +53,6 @@ import ContentBox from "./pages/ContentBox";
 import ContentSchedule from "./pages/ContentSchedule";
 import ContentCalendar30Day from "./pages/ContentCalendar30Day";
 import ContentCreator from "./pages/ContentCreator";
-import MightyChat from "./pages/MightyChat";
-import MightyChatV2 from "./pages/MightyChatV2";
 import Portfolio from "./pages/Portfolio";
 import MightyTasks from "./pages/MightyTasks";
 import MightyTaskUnified from "./pages/MightyTaskUnified";
@@ -184,9 +182,7 @@ const App = () => (
             <Route path="/mightymail/analytics" element={<MightymailAnalytics />} />
             <Route path="/quote-drafts" element={<QuoteDrafts />} />
             <Route path="/ai-pipeline" element={<AIPipeline />} />
-            {/* DISABLED: MightyChats frozen - Instagram/Email ingestion stopped */}
-            {/* <Route path="/mightychat" element={<MightyChat />} /> */}
-            {/* <Route path="/mightychat-v2" element={<MightyChatV2 />} /> */}
+            {/* MightyChat disabled - redirects to website-admin */}
             <Route path="/mightychat" element={<Navigate to="/website-admin" replace />} />
             <Route path="/mightychat-v2" element={<Navigate to="/website-admin" replace />} />
             <Route path="/backlog" element={<Backlog />} />
