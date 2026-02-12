@@ -30,7 +30,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-interface WrenActivity {
+interface OpsActivity {
   id: string;
   action_type: string;
   description: string;
@@ -39,7 +39,7 @@ interface WrenActivity {
   status: string;
 }
 
-interface WrenTask {
+interface OpsTask {
   id: string;
   category: 'dev' | 'sales' | 'csr' | 'marketing';
   title: string;
@@ -69,8 +69,8 @@ interface DiaryEntry {
 }
 
 export default function CommandOpsPage() {
-  const [activities, setActivities] = useState<WrenActivity[]>([]);
-  const [tasks, setTasks] = useState<WrenTask[]>([]);
+  const [activities, setActivities] = useState<OpsActivity[]>([]);
+  const [tasks, setTasks] = useState<OpsTask[]>([]);
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('todo');
@@ -108,7 +108,7 @@ export default function CommandOpsPage() {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(100);
-      setTasks((data as WrenTask[]) || []);
+      setTasks((data as OpsTask[]) || []);
     } catch (err) {
       console.error('Error fetching tasks:', err);
     }
@@ -185,7 +185,7 @@ export default function CommandOpsPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">Command Ops</h1>
-              <p className="text-gray-400">Wren's Task Dashboard</p>
+              <p className="text-gray-400">Command Ops Dashboard</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -474,7 +474,7 @@ export default function CommandOpsPage() {
           <TabsContent value="diary">
             <Card className="bg-gray-800/50 border-gray-700">
               <div className="p-4 border-b border-gray-700">
-                <h2 className="text-lg font-semibold text-white">Wren's Diary</h2>
+                <h2 className="text-lg font-semibold text-white">Operations Diary</h2>
                 <p className="text-sm text-gray-400">Nightly synopsis at 11pm AZ time</p>
               </div>
               <div className="divide-y divide-gray-700">

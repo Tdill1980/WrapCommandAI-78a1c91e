@@ -708,8 +708,23 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Outer-scope captures for smart fallback in catch block
+  let _msgText = '';
+  let _sessionId = '';
+  let _pageUrl = '';
+  let _geo: any = null;
+  let _customerName = '';
+  let _customerEmail = '';
+  let _customerPhone = '';
+
   try {
     const { org, agent, mode, session_id, message_text, page_url, referrer, geo, attachments, customer_name, customer_email } = await req.json();
+    _msgText = message_text || '';
+    _sessionId = session_id || '';
+    _pageUrl = page_url || '';
+    _geo = geo || null;
+    _customerName = customer_name || '';
+    _customerEmail = customer_email || '';
 
     if (!message_text || !session_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -908,9 +923,9 @@ serve(async (req) => {
       chatState.sqft = w * h;
       chatState.dimensions = { width: w, height: h };
     }
-    if (email) chatState.customer_email = email;
-    if (name) chatState.customer_name = name;
-    if (phone) chatState.customer_phone = phone;
+    if (email) { chatState.customer_email = email; _customerEmail = _customerEmail || email; }
+    if (name) { chatState.customer_name = name; _customerName = _customerName || name; }
+    if (phone) { chatState.customer_phone = phone; _customerPhone = phone; }
     if (bulkVehicleCount) chatState.bulk_vehicle_count = bulkVehicleCount;
     if (bulkVehicleTypes) chatState.bulk_vehicle_types = bulkVehicleTypes;
     
@@ -2079,12 +2094,168 @@ Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}` }
     });
 
   } catch (error) {
-    console.error('[JordanLee] Error:', error);
+    console.error('[JordanLee] AI Error:', error);
+
+    // Analyze customer intent from their message
+    const msg = (_msgText || '').toLowerCase();
+
+    let fallbackReply = '';
+    let fallbackIntent = 'general';
+
+    if (msg.includes('price') || msg.includes('cost') || msg.includes('quote') ||
+        msg.includes('how much') || msg.includes('pricing') || msg.includes('sqft') ||
+        msg.includes('sq ft') || msg.includes('wrap cost')) {
+      fallbackIntent = 'quote';
+      fallbackReply = `Great question! Wrap pricing depends on your vehicle size and the material you choose. Here's what I can tell you right now:\n\n• Full vehicle wraps typically run $7-$12/sq ft for printing\n• Most cars are 200-250 sq ft, trucks and vans are 300-500+ sq ft\n• We print on premium 3M, Avery, and other top-brand materials\n\nI've flagged your inquiry for our team — they'll reach out within the hour with a detailed quote for your specific vehicle.\n\nWhat vehicle are you looking to wrap? (Year, make, model)`;
+    }
+    else if (msg.includes('order') || msg.includes('tracking') || msg.includes('status') ||
+             msg.includes('shipped') || msg.includes('delivery') || msg.includes('where is')) {
+      fallbackIntent = 'order_status';
+      fallbackReply = `I'm pulling up your order now. To get your exact status and tracking info, I need your order number — it starts with "MQ-" and was in your confirmation email.\n\nI've also flagged this for our fulfillment team to follow up with you directly within the hour.\n\nWhat's your order number?`;
+    }
+    else if (msg.includes('file') || msg.includes('artwork') || msg.includes('design') ||
+             msg.includes('print ready') || msg.includes('template') || msg.includes('upload') ||
+             msg.includes('psd') || msg.includes('pdf') || msg.includes('.ai')) {
+      fallbackIntent = 'artwork';
+      fallbackReply = `I can help with your artwork! Here's what our design team needs for print-ready files:\n\n• PDF, AI, EPS, or PSD format (300 DPI minimum)\n• CMYK color mode\n• Include 1" bleed on all edges\n• Text converted to outlines\n\nYou can email your file to Design@WePrintWraps.com.\n\nI've flagged your inquiry — our design team will review and reach out within the hour.\n\nWhat type of wrap project are you working on?`;
+    }
+    else if (msg.includes('restyle') || msg.includes('visualiz') || msg.includes('preview') ||
+             msg.includes('mockup') || msg.includes('see what') || msg.includes('look like')) {
+      fallbackIntent = 'restyle';
+      fallbackReply = `You'd love RestyleProAI! It lets you see exactly what your wrap will look like before you print.\n\nTry it at restylepro.ai — upload a photo of your vehicle and test different designs, colors, and finishes instantly.\n\nOur team will follow up with more details. Want me to help with pricing or artwork for your wrap project?`;
+    }
+    else {
+      fallbackIntent = 'general';
+      fallbackReply = `Thanks for reaching out! Here's what I can help with:\n\n• Vehicle wrap pricing and quotes\n• Order status and tracking\n• Artwork and file preparation\n• RestyleProAI wrap visualization\n• Material and finish options\n\nI've flagged your message for our team — they'll follow up within the hour to make sure you get exactly what you need.\n\nWhat's your wrap project about?`;
+    }
+
+    // ============================================
+    // SAVE THE LEAD — Never lose a customer inquiry
+    // ============================================
+    try {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+
+      if (serviceKey && supabaseUrl) {
+        await fetch(`${supabaseUrl}/rest/v1/chat_fallback_leads`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': serviceKey,
+            'Authorization': `Bearer ${serviceKey}`,
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({
+            session_id: _sessionId || 'unknown',
+            customer_message: _msgText || '',
+            customer_name: _customerName || null,
+            customer_email: _customerEmail || null,
+            customer_phone: _customerPhone || null,
+            detected_intent: fallbackIntent,
+            fallback_reply: fallbackReply,
+            error_message: String(error),
+            page_url: _pageUrl || null,
+            geo_data: _geo || null,
+            created_at: new Date().toISOString(),
+            status: 'needs_followup'
+          })
+        });
+      }
+    } catch (saveError) {
+      console.error('[JordanLee] Failed to save fallback lead:', saveError);
+    }
+
+    // ============================================
+    // SMS + EMAIL ALERTS via Resend
+    // ============================================
+    try {
+      const resendKey = Deno.env.get('RESEND_API_KEY');
+      const alertPhone1 = Deno.env.get('ALERT_PHONE_1');
+      const alertPhone2 = Deno.env.get('ALERT_PHONE_2');
+
+      if (resendKey) {
+        const customerInfo = [
+          _customerName ? `Name: ${_customerName}` : null,
+          _customerEmail ? `Email: ${_customerEmail}` : null,
+          _customerPhone ? `Phone: ${_customerPhone}` : null,
+        ].filter(Boolean).join(' | ');
+
+        const smsBody = `⚠️ WPW Chat Fallback\n${fallbackIntent.toUpperCase()} inquiry\nMsg: ${(_msgText || '').substring(0, 80)}\n${customerInfo || 'No contact info yet'}\nLead saved — follow up ASAP`;
+
+        // SMS to Trish via Verizon email-to-SMS gateway
+        if (alertPhone1) {
+          fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${resendKey}`
+            },
+            body: JSON.stringify({
+              from: 'WPW Alerts <alerts@weprintwraps.com>',
+              to: [`${alertPhone1}@vtext.com`],
+              subject: '',
+              text: smsBody
+            })
+          }).catch(e => console.error('[JordanLee] SMS1 failed:', e));
+        }
+
+        // SMS to Jackson via Verizon email-to-SMS gateway
+        if (alertPhone2) {
+          fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${resendKey}`
+            },
+            body: JSON.stringify({
+              from: 'WPW Alerts <alerts@weprintwraps.com>',
+              to: [`${alertPhone2}@vtext.com`],
+              subject: '',
+              text: smsBody
+            })
+          }).catch(e => console.error('[JordanLee] SMS2 failed:', e));
+        }
+
+        // Full email alert (more detail than SMS)
+        fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${resendKey}`
+          },
+          body: JSON.stringify({
+            from: 'WPW Alerts <alerts@weprintwraps.com>',
+            to: ['trish@weprintwraps.com'],
+            subject: `⚠️ Chat Fallback — ${fallbackIntent} inquiry needs follow-up`,
+            html: `
+              <h2>Website Chat AI Failed — Lead Captured</h2>
+              <p><strong>Customer said:</strong> ${_msgText || 'N/A'}</p>
+              <p><strong>Name:</strong> ${_customerName || 'Not provided'}</p>
+              <p><strong>Email:</strong> ${_customerEmail || 'Not provided'}</p>
+              <p><strong>Phone:</strong> ${_customerPhone || 'Not provided'}</p>
+              <p><strong>Intent:</strong> ${fallbackIntent}</p>
+              <p><strong>Error:</strong> <code>${String(error)}</code></p>
+              <p><strong>Page:</strong> ${_pageUrl || 'N/A'}</p>
+              <p><strong>Time:</strong> ${new Date().toISOString()}</p>
+              <hr>
+              <p>✅ Customer received a helpful fallback response (not an error message).</p>
+              <p>✅ Lead saved to <code>chat_fallback_leads</code> table.</p>
+              <p>⏰ Follow up within 1 hour.</p>
+            `
+          })
+        }).catch(e => console.error('[JordanLee] Email alert failed:', e));
+      }
+    } catch (alertError) {
+      console.error('[JordanLee] Alert system error:', alertError);
+    }
+
+    // Return smart fallback as 200 OK — customer sees helpful response, not an error
     return new Response(JSON.stringify({
-      error: 'Something went wrong',
-      reply: "I'm having a quick hiccup - what were you looking for help with?"
+      reply: fallbackReply,
+      fallback: true,
+      intent: fallbackIntent
     }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }

@@ -31,11 +31,11 @@
     mode: scriptTag?.getAttribute('data-mode') || 'live',
     theme: scriptTag?.getAttribute('data-theme') || 'dark-pro',
     // Edge functions on YOUR Supabase (qxllysilzonrlyoaomce)
-    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/command-chat',
+    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/website-chat',
     statusUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-agent-status',
     artworkCheckUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-artwork-file',
     // YOUR Supabase anon key
-    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY3MTcxMjUsImV4cCI6MjA1MjI5MzEyNX0.gLBJSH-IP7WVNLH7WRBaQPZ8LuG0XErqf68F6U7ELKY',
+    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM',
     // Storage on YOUR Supabase
     supabaseUrl: 'https://qxllysilzonrlyoaomce.supabase.co'
   };
@@ -1244,7 +1244,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': config.supabaseAnonKey
+            'apikey': config.supabaseAnonKey,
+            'Authorization': 'Bearer ' + config.supabaseAnonKey
           },
           body: JSON.stringify({
             session_id: sessionId,
@@ -1275,7 +1276,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': config.supabaseAnonKey
+            'apikey': config.supabaseAnonKey,
+            'Authorization': 'Bearer ' + config.supabaseAnonKey
           },
           body: JSON.stringify({
             org: config.org,
@@ -1355,7 +1357,8 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': config.supabaseAnonKey
+          'apikey': config.supabaseAnonKey,
+          'Authorization': 'Bearer ' + config.supabaseAnonKey
         },
         body: JSON.stringify(payload)
       });
