@@ -1244,7 +1244,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': config.supabaseAnonKey
+            'apikey': config.supabaseAnonKey,
+            'Authorization': 'Bearer ' + config.supabaseAnonKey
           },
           body: JSON.stringify({
             session_id: sessionId,
@@ -1275,7 +1276,8 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'apikey': config.supabaseAnonKey
+            'apikey': config.supabaseAnonKey,
+            'Authorization': 'Bearer ' + config.supabaseAnonKey
           },
           body: JSON.stringify({
             org: config.org,
@@ -1355,7 +1357,8 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': config.supabaseAnonKey
+          'apikey': config.supabaseAnonKey,
+          'Authorization': 'Bearer ' + config.supabaseAnonKey
         },
         body: JSON.stringify(payload)
       });
