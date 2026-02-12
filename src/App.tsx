@@ -106,6 +106,7 @@ import SavedViewsAdmin from "./pages/admin/SavedViewsAdmin";
 import AvailabilityManagerPage from "./pages/admin/AvailabilityManagerPage";
 import OperationsSOP from "./pages/OperationsSOP";
 import RevenueHealth from "./pages/RevenueHealth";
+import AOVBooster from "./pages/AOVBooster";
 import AIApprovals from "./pages/AIApprovals";
 import BulkVariationReview from "./pages/BulkVariationReview";
 import QuoteStatsDashboard from "./pages/QuoteStatsDashboard";
@@ -215,6 +216,7 @@ const App = () => (
             <Route path="/mightytask/*" element={<Navigate to="/mightytask" replace />} />
             <Route path="/operations-sop" element={<OperationsSOP />} />
             <Route path="/revenue-health" element={<RevenueHealth />} />
+            <Route path="/aov-booster" element={<AOVBooster />} />
             <Route path="/tradedna" element={<TradeDNA />} />
             <Route path="/admin/pricing" element={<ProductPricingAdmin />} />
             <Route path="/admin/products" element={<ProductAdmin />} />

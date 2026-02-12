@@ -133,25 +133,42 @@ export function getTonePresets(offersInstallation: boolean): Record<string, Emai
   return offersInstallation ? emailTones : printOnlyTones;
 }
 
-// Rotating upsell helper - matches edge function
+// Rotating upsell helper - expanded for AOV optimization
+// Cycles through 5 high-value upsells to push AOV toward $1,000+
 function getRotatingUpsell(quoteId?: string) {
-  const even = quoteId
-    ? parseInt(quoteId.slice(-2), 16) % 2 === 0
-    : Date.now() % 2 === 0;
+  const num = quoteId
+    ? parseInt(quoteId.slice(-2), 16) % 5
+    : Date.now() % 5;
 
-  if (even) {
-    return {
-      title: "Need window coverage?",
-      body: "Window Perf is available at $5.95 / sq ft.",
-      link: "https://weprintwraps.com/product/perforated-window-vinyl/",
-    };
-  }
+  const upsells = [
+    {
+      title: "Save your installer hours - go Contour-Cut",
+      body: "We'll cut your panels to shape so they peel and stick. Avery Contour-Cut at $6.32/sq ft. Most shops save 2-3 hours per vehicle.",
+      link: "https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/",
+    },
+    {
+      title: "Complete the look with Window Perf",
+      body: "Perforated window vinyl at $5.95/sq ft. Full graphics outside, clear visibility from inside. Add ~30 sq ft for rear window coverage.",
+      link: "https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/",
+    },
+    {
+      title: "Got more vehicles? Unlock volume pricing",
+      body: "Add another vehicle and you could hit our next discount tier. 500+ sq ft = 5% off, 1,000+ = 10% off, 2,500+ = 15% off. Fleet orders save big.",
+      link: "https://weprintwraps.com/our-products/",
+    },
+    {
+      title: "Need a custom design? Bundle and save",
+      body: "Our design team creates full custom wraps for $750. Bundle with printing and save 5% on the whole order. One invoice, one project.",
+      link: "https://weprintwraps.com/our-products/custom-vehicle-wrap-design/",
+    },
+    {
+      title: "Got walls to wrap too?",
+      body: "Wall Wrap vinyl at just $3.25/sq ft. Brand your shop, showroom, or office. Bundle with your vehicle order for one easy shipment.",
+      link: "https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/",
+    },
+  ];
 
-  return {
-    title: "Need logos or decals to match?",
-    body: "Cut Contour graphics start at $6.32 / sq ft.",
-    link: "https://weprintwraps.com/product/avery-cut-contour-vehicle-wrap/",
-  };
+  return upsells[num];
 }
 
 export function renderEmailTemplate(
