@@ -1167,6 +1167,29 @@ serve(async (req) => {
     }
 
     // ============================================
+    // FINISH TYPE DETECTION (Gloss, Matte, Satin)
+    // ============================================
+    if (/\b(matte|matt)\b/i.test(msg)) {
+      chatState.finish_type = 'Matte';
+      console.log('[JordanLee] Finish type detected: Matte');
+    } else if (/\b(satin)\b/i.test(msg)) {
+      chatState.finish_type = 'Satin';
+      console.log('[JordanLee] Finish type detected: Satin');
+    } else if (/\b(gloss|glossy)\b/i.test(msg)) {
+      chatState.finish_type = 'Gloss';
+      console.log('[JordanLee] Finish type detected: Gloss');
+    }
+
+    // ============================================
+    // VEHICLE COUNT DETECTION (for fleet/bulk)
+    // ============================================
+    const vehicleCountMatch = msg.match(/\b(\d+)\s*(?:vehicle|car|truck|van|wrap)/i);
+    if (vehicleCountMatch) {
+      chatState.vehicle_count = parseInt(vehicleCountMatch[1]);
+      console.log('[JordanLee] Vehicle count detected:', chatState.vehicle_count);
+    }
+
+    // ============================================
     // DESIGN SERVICE QUESTION
     // ============================================
     const isDesignQuestion = /\b(design|custom design|need.*design|create.*wrap|don't have.*art|no.*artwork|design.*service)\b/i.test(msg);
@@ -1714,7 +1737,15 @@ I'm sending this estimate to ${chatState.customer_email} and flagging it for our
 
 **Order here:** ${productUrl}"
 
-IMPORTANT: This is an ESTIMATE - escalate to team for exact sqft!`;
+IMPORTANT: This is an ESTIMATE - escalate to team for exact sqft!
+Ask what finish they want: Gloss, Matte, or Satin lamination.
+
+AFTER GIVING PRICE — SUGGEST ONE COMPLEMENTARY PRODUCT (most relevant):
+- Window Perf ($5.32/sqft) — see-through window coverage
+- Cut Contour ($6.32/sqft) — logos/decals, weeded and masked
+- Wall Wrap ($3.25/sqft) — for shops/showrooms
+- Design Services ($750) — full custom wrap design
+Pick ONE, keep it casual.`;
             
             // Send escalation for exact quote
             try {
@@ -1774,7 +1805,17 @@ CRITICAL PRICING RULES:
 - ALWAYS state whether roof is included or excluded
 - ALWAYS offer the alternative (full wrap price if they got default)
 - NEVER show different prices for Avery vs 3M - BOTH are $5.27/sqft
-- We PRINT and SHIP - customer arranges local installation`;
+- We PRINT and SHIP - customer arranges local installation
+- Ask what finish they want: Gloss, Matte, or Satin lamination
+
+AFTER GIVING PRICE — SUGGEST ONE COMPLEMENTARY PRODUCT (pick the most relevant):
+- Window Perf ($5.32/sqft) — "btw do you need window coverage too? we do see-through window perf at $5.32/sqft"
+- Cut Contour vinyl ($6.32/sqft) — "need any logos or decals to go with that? cut contour vinyl is $6.32/sqft, comes weeded and masked"
+- Wall Wrap ($3.25/sqft) — "if you've got a shop or showroom, we do wall wraps too — only $3.25/sqft"
+- Design Services ($750) — "need help with artwork? our design team can do a full custom design for $750"
+- Wrap By The Yard ($95.50/yd) — "check out our pre-designed patterns if you want something quick — camo, marble, carbon, etc."
+
+Pick ONE that makes sense for their project. Keep it casual — just a quick mention, not a hard sell.`;
           }
           
           chatState.stage = 'price_given';
@@ -1791,14 +1832,38 @@ CRITICAL PRICING RULES:
           const wpwUrl = Deno.env.get('SUPABASE_URL') || 'https://qxllysilzonrlyoaomce.supabase.co';
           const wpwAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
 
-          // Use only columns that exist in quotes table (no customer_phone)
+          // Use only columns that exist in quotes table
+          const finishType = chatState.finish_type || 'Gloss';
+          const productKey = chatState.product_key || 'avery_wrap';
+          const productNameMap: Record<string, string> = {
+            'avery_wrap': `Avery MPI 1105 with DOL 1460Z Lamination - ${finishType}`,
+            '3m_wrap': `3M IJ180Cv3 with 8518 Lamination - ${finishType}`,
+            'window_perf': 'Perforated Window Vinyl 50/50',
+            'cut_avery': 'Avery Cut Contour Vinyl Graphics (Weeded & Masked)',
+            'cut_3m': '3M Cut Contour Vinyl Graphics (Weeded & Masked)',
+            'wall_wrap': 'Wall Wrap Printed Vinyl',
+            'custom_design': 'Custom Vehicle Wrap Design',
+          };
+          const fullProductName = productNameMap[productKey] || `Printed Wrap Film - ${finishType}`;
+
+          const vehicleLabel = `${chatState.vehicle_year || ''} ${chatState.vehicle || vehicleDisplay}`.trim();
+          const vehicleDetailsStr = [
+            vehicleLabel,
+            `${chatState.sqft || defaultSqft} sqft (${chatState.include_roof ? 'with roof' : 'excludes roof'})`,
+            `Material: ${fullProductName}`,
+            `Qty: ${chatState.vehicle_count || 1} vehicle(s)`,
+          ].join(' | ');
+
           const quotePayload = {
             quote_number: quoteNumber,
             organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
             customer_name: chatState.customer_name || 'Website Chat Lead',
             customer_email: chatState.customer_email,
+            customer_phone: chatState.customer_phone || null,
             vehicle_model: chatState.vehicle || vehicleDisplay,
             vehicle_year: chatState.vehicle_year ? parseInt(chatState.vehicle_year) : null,
+            vehicle_details: vehicleDetailsStr,
+            product_name: fullProductName,
             sqft: chatState.sqft || defaultSqft,
             material_cost: price,
             total_price: price,
@@ -2211,6 +2276,67 @@ Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}` }
       console.error('[JordanLee] CRITICAL: Failed to save outbound message:', outboundMsgError);
     } else {
       console.log('[JordanLee] Outbound message saved for conversation:', conversationId);
+    }
+
+    // ============================================
+    // SYNC TO COMMAND_CONTACTS — Every lead, even non-quote
+    // This powers the CommandContacts CRM / email list
+    // ============================================
+    const syncEmail = (chatState.customer_email || '').toLowerCase().trim();
+    if (syncEmail && !syncEmail.includes('test') && !syncEmail.includes('@weprintwraps.com')) {
+      try {
+        const { data: existingContact } = await supabase
+          .from('command_contacts')
+          .select('id, conversation_count')
+          .eq('email', syncEmail)
+          .single();
+
+        if (existingContact) {
+          // Update existing contact — merge, don't overwrite with null
+          const updates: Record<string, any> = {
+            updated_at: new Date().toISOString(),
+            conversation_count: (existingContact.conversation_count || 0) + 1,
+            last_conversation_id: conversationId,
+            last_conversation_at: new Date().toISOString(),
+          };
+          if (chatState.customer_name) updates.name = chatState.customer_name;
+          if (chatState.customer_phone) updates.phone = chatState.customer_phone;
+          if (chatState.shop_name) updates.shop_name = chatState.shop_name;
+          if (chatState.vehicle) updates.last_vehicle_interest = chatState.vehicle;
+          if (chatState.quote_id) { updates.has_received_quote = true; updates.last_quote_id = chatState.quote_id; }
+          if (geo?.city) updates.city = geo.city;
+          if (geo?.region) updates.region = geo.region;
+          if (geo?.country_name || geo?.country) updates.country = geo.country_name || geo.country;
+          if (geo?.timezone) updates.timezone = geo.timezone;
+
+          await supabase.from('command_contacts').update(updates).eq('id', existingContact.id);
+          console.log('[JordanLee] Updated command_contact:', syncEmail);
+        } else {
+          // Create new contact
+          await supabase.from('command_contacts').insert({
+            email: syncEmail,
+            name: chatState.customer_name || null,
+            phone: chatState.customer_phone || null,
+            shop_name: chatState.shop_name || null,
+            city: geo?.city || null,
+            region: geo?.region || null,
+            country: geo?.country_name || geo?.country || null,
+            timezone: geo?.timezone || null,
+            last_vehicle_interest: chatState.vehicle || null,
+            has_received_quote: !!chatState.quote_id,
+            last_quote_id: chatState.quote_id || null,
+            conversation_count: 1,
+            last_conversation_id: conversationId,
+            last_conversation_at: new Date().toISOString(),
+            source: 'website_chat',
+            lead_score: chatState.quote_id ? 50 : (chatState.vehicle ? 30 : 10),
+            tags: chatState.quote_id ? ['quoted'] : ['lead'],
+          });
+          console.log('[JordanLee] Created command_contact:', syncEmail);
+        }
+      } catch (e) {
+        console.error('[JordanLee] command_contacts sync error:', e);
+      }
     }
 
     return new Response(JSON.stringify({
