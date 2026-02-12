@@ -174,8 +174,8 @@ THIS IS NON-NEGOTIABLE. VIOLATING THIS LOSES CUSTOMER TRUST.
 // ============================================
 const WPW_TEAM: Record<string, { name: string; email: string; role: string; phone?: string }> = {
   bulk: { name: 'Jackson', email: 'jackson@weprintwraps.com', role: 'Bulk/Fleet Sales', phone: '+14807726003' },
-  design: { name: 'Grant', email: 'grant@weprintwraps.com', role: 'Design Services' },
-  quality: { name: 'Trish', email: 'trish@weprintwraps.com', role: 'Quality/Escalations', phone: '+16233135418' },
+  design: { name: 'Lance', email: 'lance@weprintwraps.com', role: 'Design Services' },
+  quality: { name: 'Lance', email: 'lance@weprintwraps.com', role: 'Quality/Escalations' },
   support: { name: 'Lance', email: 'lance@weprintwraps.com', role: 'Customer Support' },
 };
 
