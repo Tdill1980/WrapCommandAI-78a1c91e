@@ -664,14 +664,14 @@ VOICE - Sound like texting a coworker:
 - NO emojis except maybe 📧 when sending quote
 - 1-3 sentences max per response
 
-FLOW (SKIP steps if info already provided in CUSTOMER STATE below):
-1. If name is ❌ NOT CAPTURED → "For sure! What's your name?"
-2. If name captured but no vehicle → "Hey [name]! What are you looking to wrap?"
-3. If vehicle captured but email is ❌ NOT CAPTURED → "Nice! What's your email? I'll get you a quote."
-4. If name + email + vehicle all captured → Give price immediately! Then ask for shop name and phone.
+FLOW:
+1. Customer already provided name, email, and phone via the pre-chat form. NEVER ask for these again.
+2. Ask what vehicle they want to wrap (year/make/model).
+3. Once vehicle is identified → Give price at $5.27/sqft with exact sqft, recommend product, and provide the order URL.
+4. Email quote automatically (from MightyCustomer with a quote number) to the email already on file.
 5. After quote sent → "Done! Quote's in your inbox. Hit me up if you need anything!"
 
-IMPORTANT: If name AND email are already in CUSTOMER STATE, SKIP straight to helping with their question!
+CRITICAL: Name, email, and phone are PRE-COLLECTED. NEVER ask for them. Go straight to helping!
 
 PRICE FORMAT - CRITICAL:
 Always clearly state whether roof is included or excluded!
@@ -718,13 +718,14 @@ serve(async (req) => {
   let _customerPhone = '';
 
   try {
-    const { org, agent, mode, session_id, message_text, page_url, referrer, geo, attachments, customer_name, customer_email } = await req.json();
+    const { org, agent, mode, session_id, message_text, page_url, referrer, geo, attachments, customer_name, customer_email, customer_phone } = await req.json();
     _msgText = message_text || '';
     _sessionId = session_id || '';
     _pageUrl = page_url || '';
     _geo = geo || null;
     _customerName = customer_name || '';
     _customerEmail = customer_email || '';
+    _customerPhone = customer_phone || '';
 
     if (!message_text || !session_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -772,6 +773,7 @@ serve(async (req) => {
       // Pre-populate with onboarding data if provided and not already set
       if (customer_name && !chatState.customer_name) chatState.customer_name = customer_name;
       if (customer_email && !chatState.customer_email) chatState.customer_email = customer_email;
+      if (customer_phone && !chatState.customer_phone) chatState.customer_phone = customer_phone;
       // DEBUG: Log chatState persistence
       console.log('[JordanLee] Session:', { session_id, found: true });
       console.log('[JordanLee] Loaded state:', JSON.stringify(chatState));
@@ -780,6 +782,7 @@ serve(async (req) => {
       // Pre-populate chatState with onboarding data if provided
       if (customer_name) chatState.customer_name = customer_name;
       if (customer_email) chatState.customer_email = customer_email;
+      if (customer_phone) chatState.customer_phone = customer_phone;
 
       const { data: newConv, error: convError } = await supabase
         .from('conversations')
@@ -1170,7 +1173,7 @@ SAY: "Fade wraps look amazing! 🔥 Here's our pricing:
 
 What vehicle are you looking to fade wrap? I'll recommend the right size!"
 
-THEN collect: name, email, phone, shop name before finalizing.`; 
+Customer info is already collected. Proceed to help!`; 
     }
     // ============================================
     // HANDLE RESTYLEPRO AI QUESTION
@@ -1260,7 +1263,7 @@ Have design questions? Email design@weprintwraps.com
 
 What vehicle would you like designed? I can get you a total quote for design + print!"
 
-Then collect: name, email, phone, shop name.`;
+Customer info is already collected. Proceed to help!`;
     }
     // ============================================
     // HANDLE BULK/FLEET DISCOUNT QUESTION
@@ -1288,7 +1291,7 @@ Want me to calculate your fleet quote? Just tell me:
 
 I'll get you the exact price with your discount!"
 
-Then collect: name, email, phone, shop name.`;
+Customer info is already collected. Proceed to help!`;
     }
     // ============================================
     // HANDLE FILE UPLOAD QUESTION
@@ -1332,25 +1335,9 @@ DO NOT say "Grant will reach out" - give the link directly!`;
         console.error('[JordanLee] Failed to log escalation:', e);
       }
       
-      // For BULK orders - collect contact info FIRST
+      // For BULK orders - info pre-collected, get vehicle details
       if (escalationType === 'bulk' && !chatState.bulk_info_collected) {
-        const hasContactInfo = chatState.customer_name && chatState.customer_email && chatState.customer_phone;
-        
-        if (!hasContactInfo) {
-          const missingContact = [];
-          if (!chatState.customer_name) missingContact.push('name');
-          if (!chatState.customer_email) missingContact.push('email');
-          if (!chatState.customer_phone) missingContact.push('phone');
-          
-          contextNotes = `🚛 BULK/FLEET INQUIRY - GET CONTACT INFO FIRST!
-
-BEFORE discussing fleet details, you MUST collect:
-Missing: ${missingContact.join(', ')}
-
-SAY: "Fleet pricing - I can definitely help with that! Let me get your info so our bulk specialist Jackson can put together the best pricing for you. What's your name, email, and phone number?"
-
-DO NOT escalate without contact info!`;
-        } else if (!chatState.bulk_vehicle_count) {
+        if (!chatState.bulk_vehicle_count) {
           contextNotes = `🚛 BULK INQUIRY - NOW GET VEHICLE DETAILS
 
 Customer: ${chatState.customer_name}
@@ -1375,22 +1362,12 @@ SAY: "Got it! ${chatState.bulk_vehicle_count} vehicles - Jackson is going to lov
         }
       } else {
         // Non-bulk escalation
-        if (!chatState.customer_email) {
-          contextNotes = `🚨 ESCALATION - BUT NO CONTACT INFO!
-
-Customer wants: ${escalationType}
-Route to: ${teamMember.name}
-
-BUT WE DON'T HAVE THEIR EMAIL!
-
-SAY: "I totally understand - let me connect you with ${teamMember.name}. What's your name, email, and phone so they can reach you?"
-
-GET CONTACT INFO BEFORE CONFIRMING ESCALATION!`;
-        } else {
+        {
           contextNotes = `🚨 ESCALATION CONFIRMED
 
 Customer: ${chatState.customer_name || 'Unknown'}
-Email: ${chatState.customer_email}
+Email: ${chatState.customer_email || 'Not provided'}
+Phone: ${chatState.customer_phone || 'Not provided'}
 Routed to: ${teamMember.name} (${teamMember.role})
 
 SAY: "I'm connecting you with ${teamMember.name} now - they'll reach out to you at ${chatState.customer_email}. Anything else I can help with in the meantime?"`;
@@ -1478,47 +1455,22 @@ SAY: "I'm connecting you with ${teamMember.name} now - they'll reach out to you 
         
         chatState.unhappy_flagged = true;
         
-        if (!chatState.customer_email) {
-          contextNotes = `🚨 UNHAPPY CUSTOMER - GET CONTACT INFO!
+        contextNotes = `🚨 UNHAPPY CUSTOMER - OFFER CALLBACK
 
 Reason: ${unhappyCheck.reason}
+Customer: ${chatState.customer_name || 'Unknown'}
+Email: ${chatState.customer_email || 'Not provided'}
+Phone: ${chatState.customer_phone || 'Not provided'}
 
-YOU MUST:
-1. Acknowledge their frustration empathetically
-2. Get their email and phone for callback
-3. Say: "I'm sorry to hear that - I want to make sure we get this sorted out. Can I get your email and phone? I'll have someone call you back personally."`;
-        } else {
-          contextNotes = `🚨 UNHAPPY CUSTOMER - OFFER CALLBACK
-
-Email: ${chatState.customer_email}
-
-SAY: "I totally understand - that's not the experience we want. I'm flagging this for our team right now. Would you like someone to call you? What's the best number?"`;
-        }
+SAY: "I totally understand - that's not the experience we want. I'm flagging this for our team right now. Someone will reach out to you shortly."
+DO NOT ask for email or phone - already on file!`;
       }
-      // Handle pricing with vehicle - REQUIRE NAME + EMAIL (phone/shop optional)
+      // Handle pricing with vehicle - info already pre-collected from widget form
       else if (chatState.sqft && chatState.stage !== 'price_given') {
-        const hasAllInfo = chatState.customer_name && chatState.customer_email; // Relaxed: only need name + email
         const isEstimate = chatState.is_estimate || false;
         const similarTo = chatState.similar_to || '';
-        
-        if (!hasAllInfo) {
-          // Missing info - collect name + email (minimum required)
-          const missing = [];
-          if (!chatState.customer_name) missing.push('name');
-          if (!chatState.customer_email) missing.push('email');
 
-          contextNotes = `📋 VEHICLE DETECTED BUT MISSING CONTACT INFO!
-
-Vehicle: ${chatState.vehicle || 'Unknown'}
-SQFT: ${chatState.sqft}${isEstimate ? ' (ESTIMATE)' : ''}
-${isEstimate ? `Based on similar: ${similarTo}` : ''}
-
-MISSING: ${missing.join(', ')}
-
-SAY: "Got it - ${chatState.vehicle || 'that vehicle'}!" + (isEstimate ? " I don't have exact specs for that model, but I can give you an estimate based on similar vehicles." : "") + " Quick question - what's your ${missing.join(' and ')}? Then I'll get you a quote!"
-
-DO NOT give price until you have name + email!`;
-        } else {
+        {
           // Has all info - give price and create quote
           // CRITICAL: Calculate both default (no roof) and full wrap (with roof) prices
           const defaultSqft = chatState.sqft || 0;  // Already excludes roof
@@ -1824,7 +1776,7 @@ SAY: "Window perf is $5.32/sqft!
 
 What size window are you covering? I'll get you a quote!"
 
-Then collect: name, email, phone, shop name.`;
+Customer info is already collected. Proceed to help!`;
       }
       // Order status
       else if (/\b(order|status|track|where|shipping)\b/i.test(msg)) {
@@ -1887,7 +1839,7 @@ Be helpful! Offer to help with:
 - Product questions
 - Order status
 
-${!chatState.customer_email ? "Try to get their email for follow-up!" : ""}`;
+${chatState.customer_email ? "Email already on file: " + chatState.customer_email : ""}`;
       }
     }
 
@@ -1958,18 +1910,16 @@ ${chatState.customer_email ? '🚫 EMAIL ALREADY CAPTURED: ' + chatState.custome
 - The customer may have changed vehicles - only reference the CURRENT vehicle above
 - NEVER mix up or reference old vehicles from earlier in the conversation
 
-PRICING RULE (CONTACT-GATED):
-- If name AND email are shown above as captured (not ❌), the gate is PASSED - proceed to help!
-- If name OR email show ❌ NOT CAPTURED, ask for the missing info before giving pricing
-- AFTER you have name+email: Give ONE price at $5.27/sqft and ask "Would you prefer Avery MPI 1105 or 3M IJ180Cv3? Both are the same price!"
+PRICING RULE:
+- Customer info is PRE-COLLECTED. No gate needed. Give pricing immediately when vehicle is known!
+- Give ONE price at $5.27/sqft and ask "Would you prefer Avery MPI 1105 or 3M IJ180Cv3? Both are the same price!"
 - NEVER show two different prices for Avery vs 3M. They are BOTH $5.27/sqft!
 - For trailers/RVs/campers: ALWAYS ask for dimensions (length × height per side + which sides). Do NOT estimate sqft from length alone!
+- ALWAYS include the product order URL so the customer can buy immediately!
 
-${chatState.customer_name && chatState.customer_email ? `
-🚫🚫🚫 CRITICAL: DO NOT ASK FOR NAME OR EMAIL! 🚫🚫🚫
-Customer already provided: ${chatState.customer_name} / ${chatState.customer_email}
-Just help them and send quote to their email. NEVER say "What is your name/email"!
-` : '📧 GATE ACTIVE: Get name + email BEFORE giving price!'}`;
+🚫🚫🚫 CRITICAL: NEVER ASK FOR NAME, EMAIL, OR PHONE! 🚫🚫🚫
+Customer already provided via pre-chat form: ${chatState.customer_name} / ${chatState.customer_email} / ${chatState.customer_phone}
+Just help them, give pricing, recommend products with URLs, and email the quote automatically!`;
 
         // Use OpenAI API
         const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {

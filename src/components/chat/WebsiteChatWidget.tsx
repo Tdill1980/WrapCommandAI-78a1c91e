@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageCircle, X, Send, Car, Palette, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase, callEdgeFunction } from "@/integrations/supabase/production-client";
+import { callEdgeFunction } from "@/integrations/supabase/production-client";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -9,6 +9,12 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   isTyping?: boolean;
+}
+
+interface CustomerInfo {
+  name: string;
+  email: string;
+  phone: string;
 }
 
 const QUICK_ACTIONS = [
@@ -24,29 +30,47 @@ export function WebsiteChatWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `website-${crypto.randomUUID()}`);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "" });
+  const [formError, setFormError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Add welcome message when chat opens
+  // Add welcome message when chat opens and customer info collected
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
+    if (isOpen && customerInfo && messages.length === 0) {
       setMessages([
         {
           id: "welcome",
           role: "assistant",
-          content: "Hey! Welcome to WePrintWraps support. What can I help you with today?",
+          content: `Hey ${customerInfo.name.split(' ')[0]}! Welcome to WePrintWraps. What can I help you with today?`,
         },
       ]);
     }
-  }, [isOpen, messages.length]);
+  }, [isOpen, customerInfo, messages.length]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleStartChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+
+    const name = formData.name.trim();
+    const email = formData.email.trim();
+    const phone = formData.phone.trim();
+
+    if (!name) { setFormError("Name is required"); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setFormError("Valid email is required"); return; }
+    if (!phone || phone.replace(/\D/g, "").length < 7) { setFormError("Valid phone number is required"); return; }
+
+    setCustomerInfo({ name, email, phone });
+  };
+
   const handleSend = async (messageText?: string) => {
     const text = messageText || input.trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || !customerInfo) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -60,20 +84,23 @@ export function WebsiteChatWidget() {
     setShowQuickActions(false);
 
     try {
-      const data = await callEdgeFunction('command-chat', {
+      const data = await callEdgeFunction('website-chat', {
         org: "wpw",
-        agent: "wpw_ai_team",
+        agent: "wpw_support",
         mode: "live",
         session_id: sessionId,
         message_text: text,
         page_url: window.location.href,
         referrer: document.referrer || "",
+        customer_name: customerInfo.name,
+        customer_email: customerInfo.email,
+        customer_phone: customerInfo.phone,
       });
 
       if (data?.reply || data?.message) {
         const fullContent = data.reply || data.message;
         const messageId = crypto.randomUUID();
-        
+
         // Add empty message that will be typed out
         setMessages((prev) => [
           ...prev,
@@ -85,7 +112,7 @@ export function WebsiteChatWidget() {
           },
         ]);
         setIsLoading(false);
-        
+
         // Type out the message in chunks
         await typeMessage(messageId, fullContent);
       }
@@ -107,13 +134,13 @@ export function WebsiteChatWidget() {
   const typeMessage = async (messageId: string, fullContent: string) => {
     const words = fullContent.split(' ');
     let currentContent = '';
-    
+
     for (let i = 0; i < words.length; i++) {
       const chunkSize = Math.floor(Math.random() * 3) + 1;
       const chunk = words.slice(i, i + chunkSize).join(' ');
       currentContent += (currentContent ? ' ' : '') + chunk;
       i += chunkSize - 1;
-      
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId
@@ -121,10 +148,10 @@ export function WebsiteChatWidget() {
             : msg
         )
       );
-      
+
       await new Promise((r) => setTimeout(r, 20 + Math.random() * 40));
     }
-    
+
     setMessages((prev) =>
       prev.map((msg) =>
         msg.id === messageId
@@ -166,7 +193,7 @@ export function WebsiteChatWidget() {
   }
 
   return (
-    <div 
+    <div
       className={cn(
         "fixed bottom-6 right-6 z-50",
         "w-[380px] max-w-[calc(100vw-48px)]",
@@ -192,7 +219,7 @@ export function WebsiteChatWidget() {
               <span className="font-bold text-white block text-base tracking-tight">WPW Support Team</span>
               <span className="text-white/90 text-xs flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
-                Website Chat • Online
+                Website Chat &bull; Online
               </span>
             </div>
           </div>
@@ -205,146 +232,186 @@ export function WebsiteChatWidget() {
         </div>
       </div>
 
-      {/* Messages area - Dark background */}
-      <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-3 bg-[#16162a] scrollbar-thin scrollbar-thumb-purple-500/30">
-        {messages.map((message, index) => (
-          <div 
-            key={message.id}
-            className="animate-in fade-in slide-in-from-bottom-2 duration-300"
-            style={{ animationDelay: `${index * 50}ms` }}
-          >
-            <div
+      {/* Pre-chat form OR chat messages */}
+      {!customerInfo ? (
+        <div className="flex-1 flex flex-col justify-center p-6 bg-[#16162a]">
+          <div className="text-center mb-6">
+            <h3 className="text-white font-semibold text-lg mb-1">Start a conversation</h3>
+            <p className="text-gray-400 text-sm">We'll get you a quote fast!</p>
+          </div>
+          <form onSubmit={handleStartChat} className="space-y-3">
+            <input
+              type="text"
+              placeholder="Your name"
+              value={formData.name}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               className={cn(
-                "max-w-[85%] px-4 py-3 rounded-2xl text-sm",
-                "transition-all duration-200",
-                message.role === "user"
-                  ? "bg-[#2a2a4a] text-white ml-auto rounded-br-sm border border-white/10"
-                  : "bg-gradient-to-br from-fuchsia-500 via-purple-500 to-pink-500 text-white rounded-bl-sm shadow-[0_4px_15px_rgba(168,85,247,0.4)]"
+                "w-full bg-[#2a2a4a] border border-white/10 rounded-xl",
+                "px-4 py-3 text-sm text-white placeholder:text-gray-400",
+                "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              )}
+            />
+            <input
+              type="email"
+              placeholder="Email address"
+              value={formData.email}
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              className={cn(
+                "w-full bg-[#2a2a4a] border border-white/10 rounded-xl",
+                "px-4 py-3 text-sm text-white placeholder:text-gray-400",
+                "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              )}
+            />
+            <input
+              type="tel"
+              placeholder="Phone number"
+              value={formData.phone}
+              onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+              className={cn(
+                "w-full bg-[#2a2a4a] border border-white/10 rounded-xl",
+                "px-4 py-3 text-sm text-white placeholder:text-gray-400",
+                "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              )}
+            />
+            {formError && (
+              <p className="text-red-400 text-xs px-1">{formError}</p>
+            )}
+            <Button
+              type="submit"
+              className={cn(
+                "w-full rounded-xl py-3 font-semibold",
+                "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500",
+                "hover:opacity-90 transition-all duration-200"
               )}
             >
-              {message.content}
-            </div>
-          </div>
-        ))}
-
-        {/* Quick Actions - Dark themed */}
-        {showQuickActions && messages.length === 1 && !isLoading && (
-          <div className="space-y-2 mt-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
-            {/* Primary CTA */}
-            {QUICK_ACTIONS.filter(a => a.primary).map((action) => (
-              <button
-                key={action.label}
-                onClick={() => handleSend(action.message)}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 p-3",
-                  "bg-gradient-to-r from-orange-500 to-orange-600",
-                  "hover:opacity-90 hover:scale-[1.02]",
-                  "rounded-xl text-sm font-semibold",
-                  "text-white transition-all duration-200",
-                  "shadow-lg shadow-orange-500/30"
-                )}
+              Start Chat
+            </Button>
+          </form>
+        </div>
+      ) : (
+        <>
+          {/* Messages area - Dark background */}
+          <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-3 bg-[#16162a] scrollbar-thin scrollbar-thumb-purple-500/30">
+            {messages.map((message, index) => (
+              <div
+                key={message.id}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-300"
+                style={{ animationDelay: `${index * 50}ms` }}
               >
-                <action.icon className="w-5 h-5" />
-                {action.label}
-              </button>
+                <div
+                  className={cn(
+                    "max-w-[85%] px-4 py-3 rounded-2xl text-sm",
+                    "transition-all duration-200",
+                    message.role === "user"
+                      ? "bg-[#2a2a4a] text-white ml-auto rounded-br-sm border border-white/10"
+                      : "bg-gradient-to-br from-fuchsia-500 via-purple-500 to-pink-500 text-white rounded-bl-sm shadow-[0_4px_15px_rgba(168,85,247,0.4)]"
+                  )}
+                >
+                  {message.content}
+                </div>
+              </div>
             ))}
 
-            {/* Secondary Actions - Single column */}
-            <div className="space-y-2">
-              {QUICK_ACTIONS.filter(a => !a.primary).map((action, i) => (
-                <button
-                  key={action.label}
-                  onClick={() => handleSend(action.message)}
-                  className={cn(
-                    "w-full flex items-center justify-center gap-2 p-3",
-                    "bg-[#2a2a4a] hover:bg-purple-500/20",
-                    "rounded-xl text-sm font-medium",
-                    "border border-purple-500/30 hover:border-purple-400",
-                    "transition-all duration-200 hover:scale-[1.02]",
-                    "text-white"
-                  )}
-                  style={{ animationDelay: `${i * 100}ms` }}
-                >
-                  <action.icon className="w-4 h-4 text-purple-400" />
-                  {action.label}
-                </button>
-              ))}
+            {/* Quick Actions - Dark themed */}
+            {showQuickActions && messages.length === 1 && !isLoading && (
+              <div className="space-y-2 mt-4 animate-in fade-in slide-in-from-bottom-3 duration-500">
+                {/* Primary CTA */}
+                {QUICK_ACTIONS.filter(a => a.primary).map((action) => (
+                  <button
+                    key={action.label}
+                    onClick={() => handleSend(action.message)}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-2 p-3",
+                      "bg-gradient-to-r from-orange-500 to-orange-600",
+                      "hover:opacity-90 hover:scale-[1.02]",
+                      "rounded-xl text-sm font-semibold",
+                      "text-white transition-all duration-200",
+                      "shadow-lg shadow-orange-500/30"
+                    )}
+                  >
+                    <action.icon className="w-5 h-5" />
+                    {action.label}
+                  </button>
+                ))}
+
+                {/* Secondary Actions - Single column */}
+                <div className="space-y-2">
+                  {QUICK_ACTIONS.filter(a => !a.primary).map((action, i) => (
+                    <button
+                      key={action.label}
+                      onClick={() => handleSend(action.message)}
+                      className={cn(
+                        "w-full flex items-center justify-center gap-2 p-3",
+                        "bg-[#2a2a4a] hover:bg-purple-500/20",
+                        "rounded-xl text-sm font-medium",
+                        "border border-purple-500/30 hover:border-purple-400",
+                        "transition-all duration-200 hover:scale-[1.02]",
+                        "text-white"
+                      )}
+                      style={{ animationDelay: `${i * 100}ms` }}
+                    >
+                      <action.icon className="w-4 h-4 text-purple-400" />
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Typing indicator - Dark themed */}
+            {isLoading && (
+              <div className="flex items-center gap-2 py-2 animate-in fade-in duration-200">
+                <div className="flex gap-1 px-4 py-3 bg-[#2a2a4a] rounded-2xl rounded-bl-sm border border-white/10">
+                  <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input area - Dark */}
+          <div className="p-3 border-t border-white/10 bg-[#1a1a2e]" style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom))` }}>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type a message..."
+                disabled={isLoading}
+                className={cn(
+                  "flex-1 bg-[#2a2a4a] border border-white/10 rounded-full",
+                  "px-4 py-2.5 text-sm text-white placeholder:text-gray-400",
+                  "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500",
+                  "transition-all duration-200"
+                )}
+              />
+              <Button
+                size="icon"
+                onClick={() => handleSend()}
+                disabled={isLoading || !input.trim()}
+                className={cn(
+                  "shrink-0 rounded-full w-10 h-10",
+                  "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500",
+                  "hover:opacity-90 hover:scale-105",
+                  "transition-all duration-200",
+                  "disabled:opacity-50 disabled:hover:scale-100"
+                )}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+            {/* WePrintWraps.com branding - Dark */}
+            <div className="mt-2 text-center">
+              <span className="text-xs text-gray-500">Powered by </span>
+              <span className="text-xs font-medium text-fuchsia-400">weprintwraps.com</span>
             </div>
           </div>
-        )}
-
-        {/* Typing indicator - Dark themed */}
-        {isLoading && (
-          <div className="flex items-center gap-2 py-2 animate-in fade-in duration-200">
-            <div className="flex gap-1 px-4 py-3 bg-[#2a2a4a] rounded-2xl rounded-bl-sm border border-white/10">
-              <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input area - Dark */}
-      <div className="p-3 border-t border-white/10 bg-[#1a1a2e]" style={{ paddingBottom: `calc(0.75rem + env(safe-area-inset-bottom))` }}>
-        {/* Contextual input hints based on last message */}
-        {(() => {
-          const lastAssistantMsg = messages.filter(m => m.role === 'assistant').slice(-1)[0]?.content.toLowerCase() || '';
-          if (lastAssistantMsg.includes('quote number') || lastAssistantMsg.includes('quote #')) {
-            return <div className="text-xs text-gray-500 mb-2 px-1">Example: Q-10432</div>;
-          }
-          if (lastAssistantMsg.includes('order number') || lastAssistantMsg.includes('order #')) {
-            return <div className="text-xs text-gray-500 mb-2 px-1">Example: #18392</div>;
-          }
-          if (lastAssistantMsg.includes('email') && (lastAssistantMsg.includes('send') || lastAssistantMsg.includes('what'))) {
-            return <div className="text-xs text-gray-500 mb-2 px-1">We'll only use this to send your quote.</div>;
-          }
-          if (lastAssistantMsg.includes('name') && lastAssistantMsg.includes('quote')) {
-            return <div className="text-xs text-gray-500 mb-2 px-1">This helps us label your quote correctly.</div>;
-          }
-          if (lastAssistantMsg.includes('company') || lastAssistantMsg.includes('shop name')) {
-            return <div className="text-xs text-gray-500 mb-2 px-1">Optional — but helpful for shop or fleet orders.</div>;
-          }
-          return null;
-        })()}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type a message..."
-            disabled={isLoading}
-            className={cn(
-              "flex-1 bg-[#2a2a4a] border border-white/10 rounded-full",
-              "px-4 py-2.5 text-sm text-white placeholder:text-gray-400",
-              "focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500",
-              "transition-all duration-200"
-            )}
-          />
-          <Button
-            size="icon"
-            onClick={() => handleSend()}
-            disabled={isLoading || !input.trim()}
-            className={cn(
-              "shrink-0 rounded-full w-10 h-10",
-              "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500",
-              "hover:opacity-90 hover:scale-105",
-              "transition-all duration-200",
-              "disabled:opacity-50 disabled:hover:scale-100"
-            )}
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-        </div>
-        {/* WePrintWraps.com branding - Dark */}
-        <div className="mt-2 text-center">
-          <span className="text-xs text-gray-500">Powered by </span>
-          <span className="text-xs font-medium text-fuchsia-400">weprintwraps.com</span>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
