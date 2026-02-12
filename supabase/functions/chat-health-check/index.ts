@@ -37,7 +37,7 @@ serve(async (req) => {
 
   // Check External Supabase
   const extUrl = Deno.env.get('EXTERNAL_SUPABASE_URL');
-  const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_KEY');
+  const extKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY');
   checks.external_db_url = extUrl ? 'SET' : 'MISSING';
   checks.external_db_key = extKey ? 'SET' : 'MISSING';
   if (!extUrl || !extKey) allHealthy = false;
