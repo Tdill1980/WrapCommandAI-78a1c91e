@@ -611,19 +611,19 @@ serve(async (req) => {
         systemPrompt: "You are a helpful assistant.",
       };
 
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+      const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+      if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
 
       const response = await fetch(
-        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${LOVABLE_API_KEY}`
+            "Authorization": `Bearer ${GEMINI_API_KEY}`
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "gemini-2.5-flash",
             messages: [{ role: "user", content: `${agentConfig.systemPrompt}\n\nUser: ${message}` }],
             temperature: 0.7,
             max_tokens: 1500
@@ -1005,21 +1005,21 @@ When an image is generated, it will be included in your response.`}
       if (isImageRequest) {
         console.log("Image generation request detected:", message);
         
-        const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+        const lovableApiKey = Deno.env.get("GEMINI_API_KEY");
         if (!lovableApiKey) {
-          throw new Error("LOVABLE_API_KEY not configured for image generation");
+          throw new Error("GEMINI_API_KEY not configured for image generation");
         }
 
         try {
           // Generate image using Lovable AI Gateway
-          const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const imageResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
             method: "POST",
             headers: {
               Authorization: `Bearer ${lovableApiKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-3-pro-image-preview",
+              model: "gemini-3-pro-image-preview",
               messages: [
                 { role: "user", content: message }
               ],
@@ -1267,15 +1267,15 @@ EMIT THE BLOCK NOW.
       }
 
       // Call AI using Lovable AI Gateway for vision support
-      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const lovableApiKey = Deno.env.get("GEMINI_API_KEY");
+      const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${lovableApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: aiMessages,
         }),
       });

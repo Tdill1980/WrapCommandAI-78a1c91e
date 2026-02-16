@@ -55,9 +55,9 @@ Deno.serve(async (req) => {
     }
 
     // Use Lovable AI to classify the call
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY not configured");
     }
 
     const classificationPrompt = `You are an AI assistant for ${companyName}, a vehicle wrap printing company.
@@ -87,14 +87,14 @@ Rules:
 - general_inquiry: Any other type of call
 - is_hot_lead = true for: fleet mentions, multiple vehicles, commercial projects, wrap shops, or urgent timelines`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: "You are a JSON-only response bot. Output valid JSON only, no markdown." },
           { role: "user", content: classificationPrompt },

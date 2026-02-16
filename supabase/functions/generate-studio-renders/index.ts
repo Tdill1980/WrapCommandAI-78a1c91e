@@ -157,7 +157,7 @@ Return ONLY valid JSON (no markdown):
     }
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: {
@@ -165,7 +165,7 @@ Return ONLY valid JSON (no markdown):
           "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [{
             role: "user",
             content: [
@@ -285,7 +285,7 @@ OUTPUT: Single photorealistic studio photo of ${vehicle} with wrap applied.`;
     }
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: {
@@ -293,7 +293,7 @@ OUTPUT: Single photorealistic studio photo of ${vehicle} with wrap applied.`;
           "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: "google/gemini-3-pro-image-preview",
+          model: "gemini-3-pro-image-preview",
           messages: [{
             role: "user",
             content: [
@@ -425,11 +425,11 @@ serve(async (req) => {
     const { projectId, versionId, panelUrl, vehicle, vehicleYear, vehicleMake, vehicleModel, vehicleCategory } =
       await req.json() as StudioRenderRequest;
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     const SUPABASE_URL = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY) throw new Error("Missing LOVABLE_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing Supabase credentials");
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -456,7 +456,7 @@ serve(async (req) => {
     if (!vehicleDesc || vehicleDesc.trim() === '') {
       console.log("[StudioRenderOS] ⚠️ No vehicle info provided - detecting from 2D proof...");
 
-      const detected = await detectVehicleFromProof(LOVABLE_API_KEY, panelUrl);
+      const detected = await detectVehicleFromProof(GEMINI_API_KEY, panelUrl);
 
       if (detected.confidence > 0.5) {
         vehicleDesc = detected.suggestedVehicle || `${detected.year} ${detected.make} ${detected.model}`.trim();
@@ -495,7 +495,7 @@ serve(async (req) => {
 
         // Step 1: Generate raw render
         const base64Image = await generateSingleView(
-          LOVABLE_API_KEY,
+          GEMINI_API_KEY,
           vehicleDesc,
           panelUrl,
           viewKey,

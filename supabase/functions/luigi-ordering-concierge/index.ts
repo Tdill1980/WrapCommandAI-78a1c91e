@@ -558,7 +558,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const lovableApiKey = Deno.env.get('GEMINI_API_KEY');
     const resendKey = Deno.env.get('RESEND_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -931,7 +931,7 @@ Ask the customer: "I'd be happy to check your order status! Could you provide yo
 
     // Generate AI response
     if (!lovableApiKey) {
-      throw new Error('LOVABLE_API_KEY not configured');
+      throw new Error('GEMINI_API_KEY not configured');
     }
 
     const conversationHistory = await getConversationHistory(supabase, conversationId);
@@ -1100,14 +1100,14 @@ YOUR RESPONSE MUST:
       isStandalone: isStandaloneIntent
     });
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gemini-2.5-flash',
         messages,
         max_tokens: 500,
         temperature: 0.7

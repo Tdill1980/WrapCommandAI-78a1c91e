@@ -64,10 +64,10 @@ serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = Deno.env.get("GEMINI_API_KEY");
 
     if (!apiKey) {
-      throw new Error("LOVABLE_API_KEY not configured");
+      throw new Error("GEMINI_API_KEY not configured");
     }
 
     const stylePrompt = STYLE_PROMPTS[style as keyof typeof STYLE_PROMPTS] || STYLE_PROMPTS.sabri;
@@ -77,14 +77,14 @@ serve(async (req) => {
     if (hook) contextInfo += `\nSuggested Hook: ${hook}`;
     if (cta) contextInfo += `\nSuggested CTA: ${cta}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           {
             role: "system",

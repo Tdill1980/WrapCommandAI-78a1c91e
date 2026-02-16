@@ -25,10 +25,10 @@ serve(async (req) => {
 
     console.log(`[ai-generate-from-inspiration] Action: ${action}, mediaIds: ${mediaIds?.length || 0}, adType: ${adType}, platform: ${platform}`);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      console.error("[ai-generate-from-inspiration] LOVABLE_API_KEY is not configured");
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      console.error("[ai-generate-from-inspiration] GEMINI_API_KEY is not configured");
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -99,14 +99,14 @@ BRAND VOICE:
     if (action === "analyze_library") {
       console.log("[ai-generate-from-inspiration] Analyzing library patterns...");
       // Analyze patterns in the inspiration library
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             {
               role: "system",
@@ -177,14 +177,14 @@ Return insights about:
     } else if (action === "generate_hooks") {
       console.log("[ai-generate-from-inspiration] Generating hooks...");
       // Generate fresh hooks based on inspiration
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             {
               role: "system",
@@ -259,14 +259,14 @@ Generate 10 FRESH, ORIGINAL hooks for wrap shop content. These should:
         ? inspirationFiles.filter(f => mediaIds.includes(f.id))
         : inspirationFiles.slice(0, 3);
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             {
               role: "system",

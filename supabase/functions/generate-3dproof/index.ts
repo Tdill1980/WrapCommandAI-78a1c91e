@@ -7,8 +7,8 @@ serve(async (req) => {
   try {
     const { vehicle, panelUrl, angle = 'front', finish = 'gloss', environment = 'studio' } = await req.json();
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("Missing LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
 
     console.log("Generating 3D proof for:", vehicle, `(${angle}, ${finish}, ${environment})`);
 
@@ -73,15 +73,15 @@ RENDERING QUALITY:
 CRITICAL: The wrap pattern must appear seamlessly applied to the entire vehicle body, maintaining the design's integrity while following the natural curves and lines of the ${vehicle}.`;
 
     const aiRes = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "google/gemini-3-pro-image-preview",
+          model: "gemini-3-pro-image-preview",
           messages: [
             {
               role: "user",

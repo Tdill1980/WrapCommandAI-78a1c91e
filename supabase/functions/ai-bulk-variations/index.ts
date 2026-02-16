@@ -108,9 +108,9 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const lovableApiKey = Deno.env.get("GEMINI_API_KEY");
     if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY not configured");
+      throw new Error("GEMINI_API_KEY not configured");
     }
 
     const body: BulkVariationRequest = await req.json();
@@ -231,14 +231,14 @@ Respond in JSON format:
 }`;
 
         try {
-          const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
             method: "POST",
             headers: {
               Authorization: `Bearer ${lovableApiKey}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: "gemini-2.5-flash",
               messages: [
                 { role: "system", content: "You are an AI content generation assistant. Always respond with valid JSON." },
                 { role: "user", content: prompt }

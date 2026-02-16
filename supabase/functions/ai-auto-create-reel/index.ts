@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const AI_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const AI_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
 interface InspoStyle {
   font_style: string;
@@ -263,14 +263,14 @@ RULES:
 - Truncate at WORD boundaries, never mid-word`;
 
       // Call AI to analyze the single video
-      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const aiRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${AI_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             { role: "system", content: singleVideoPrompt },
             {
@@ -387,14 +387,14 @@ RULES:
           
           if (imageUrls.length > 0) {
             try {
-              const visionRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              const visionRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${AI_KEY}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  model: "google/gemini-2.5-flash",
+                  model: "gemini-2.5-flash",
                   messages: [
                     {
                       role: "user",
@@ -988,14 +988,14 @@ Return JSON ONLY:
     }));
 
     // Step 4: Call AI to select best videos with inspo context
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${AI_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           {

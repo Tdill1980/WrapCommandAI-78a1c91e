@@ -53,9 +53,9 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     console.log(`Generating static content: template=${template}, headline=${headline}, hasStyleRef=${!!styleReference}, hasVehicle=${!!wrappedVehicleUrl}`);
@@ -138,14 +138,14 @@ ${wrappedVehicleUrl ? "IMPORTANT: Feature the uploaded wrapped vehicle prominent
 
 Make it visually striking and optimized for engagement.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -225,14 +225,14 @@ ${wrappedVehicleUrl ? `- IMPORTANT: Feature this wrapped vehicle prominently in 
 - Professional automotive industry aesthetic
 Ultra high resolution.`;
 
-    const imageResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const imageResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
+        model: "gemini-2.5-flash-image-preview",
         messages: [
           { role: "user", content: imagePrompt }
         ],

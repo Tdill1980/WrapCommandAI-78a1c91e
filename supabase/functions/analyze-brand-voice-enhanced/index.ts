@@ -104,9 +104,9 @@ serve(async (req) => {
     }
 
     // Use Lovable AI Gateway
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const lovableApiKey = Deno.env.get("GEMINI_API_KEY");
     if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY not configured");
+      throw new Error("GEMINI_API_KEY not configured");
     }
 
     const systemPrompt = `You are a brand voice analyst and business intelligence expert specializing in automotive wrap shops. Analyze the provided business information and extract a comprehensive profile.
@@ -168,14 +168,14 @@ For detectedInfo:
 
 Be specific to the wrap industry and the shop's positioning.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           {

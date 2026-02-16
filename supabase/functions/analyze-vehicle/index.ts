@@ -28,8 +28,8 @@ serve(async (req) => {
   try {
     const { imageUrl } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("Missing LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) throw new Error("Missing GEMINI_API_KEY");
 
     if (!imageUrl) throw new Error("imageUrl is required");
 
@@ -113,15 +113,15 @@ CRITICAL:
 - A Ford F-150 is a TRUCK, not a van`;
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`
+          "Authorization": `Bearer ${GEMINI_API_KEY}`
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [{
             role: "user",
             content: [

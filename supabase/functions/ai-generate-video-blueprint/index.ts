@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const AI_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const AI_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
 /**
  * ai-generate-video-blueprint
@@ -327,14 +327,14 @@ Return ONLY valid JSON matching the schema. No explanations.`;
     console.log("[ai-generate-video-blueprint] Calling AI...");
 
     // Call AI to generate blueprint
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${AI_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt }

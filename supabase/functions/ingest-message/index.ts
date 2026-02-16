@@ -16,7 +16,7 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get("SUPABASE_URL")!;
     const SERVICE_ROLE = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+    const LOVABLE_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
     const body = await req.json();
@@ -82,14 +82,14 @@ Look for:
 Message: "${body.message_text}"
 ${hasFiles ? `NOTE: Customer also sent ${fileUrls.length} file(s)` : ''}`;
 
-    const classifyRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const classifyRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: "You are a message classifier. Return valid JSON only. ALWAYS detect pricing questions!" },
           { role: "user", content: classifyPrompt },
@@ -569,14 +569,14 @@ RULES:
       shouldSendReply = false;
     } else {
       // LIVE or MANUAL mode: Generate AI response
-      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const aiResp = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${LOVABLE_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "gemini-2.5-flash",
           messages: [
             { role: "system", content: replyPrompt },
             { role: "user", content: body.message_text || (hasFiles ? "[Customer sent files]" : "") },

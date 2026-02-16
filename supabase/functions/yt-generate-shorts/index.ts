@@ -11,7 +11,7 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-const AI_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const AI_KEY = Deno.env.get("GEMINI_API_KEY")!;
 
 const systemPrompt = `
 You are a world-class short-form video editor for YouTube, TikTok, Reels.
@@ -84,14 +84,14 @@ serve(async (req) => {
     console.log(`Generating shorts for job ${job_id} with ${scenes.length} scenes`);
 
     // Call AI to generate dynamic shorts
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${AI_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
           {

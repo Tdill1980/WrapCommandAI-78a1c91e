@@ -38,9 +38,9 @@ serve(async (req) => {
     if (!imageUrl) throw new Error('imageUrl is required');
     if (!orderNumber) throw new Error('orderNumber is required');
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
     }
 
     // Fetch image and convert to base64
@@ -90,15 +90,15 @@ RULES:
     console.log('[apply-render-branding] Calling Lovable Gateway for branding...');
 
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`
+          'Authorization': `Bearer ${GEMINI_API_KEY}`
         },
         body: JSON.stringify({
-          model: "google/gemini-3-pro-image-preview",
+          model: "gemini-3-pro-image-preview",
           messages: [{
             role: "user",
             content: [

@@ -51,10 +51,10 @@ serve(async (req) => {
 
   try {
     const { flowType, brand, persona, productFocus } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY not configured');
     }
 
     const template = FLOW_TEMPLATES[flowType as keyof typeof FLOW_TEMPLATES] || FLOW_TEMPLATES.nurture;
@@ -98,14 +98,14 @@ Return JSON with this structure:
   ]
 }`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${GEMINI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Generate a ${flowType} email sequence for ${brand}. ${persona ? `Persona: ${persona}. ` : ''}${productFocus ? `Focus on: ${productFocus}` : ''}` }
