@@ -87,33 +87,32 @@ RULES:
 - Only add the text overlays
 - Keep text crisp and professional`;
 
-    console.log('[apply-render-branding] Calling Lovable Gateway for branding...');
+    console.log('[apply-render-branding] Calling native Gemini API for branding...');
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GEMINI_API_KEY}`
+          'x-goog-api-key': GEMINI_API_KEY
         },
         body: JSON.stringify({
-          model: "gemini-3-pro-image-preview",
-          messages: [{
+          contents: [{
             role: "user",
-            content: [
-              { type: "text", text: brandingPrompt },
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
+            parts: [
+              { text: brandingPrompt },
+              { inlineData: { mimeType, data: imageBase64 } }
             ]
           }],
-          modalities: ["image", "text"]
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
         })
       }
     );
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('[apply-render-branding] Lovable error:', error);
+      console.error('[apply-render-branding] Gemini error:', error);
       // Graceful fallback - return original image
       return new Response(JSON.stringify({
         success: true,
@@ -125,7 +124,14 @@ RULES:
     }
 
     const data = await response.json();
-    const brandedUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let brandedUrl: string | null = null;
+    const resParts = data?.candidates?.[0]?.content?.parts || [];
+    for (const part of resParts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        brandedUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
 
     if (brandedUrl) {
       console.log('[apply-render-branding] Branding applied successfully');

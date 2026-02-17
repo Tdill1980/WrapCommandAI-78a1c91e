@@ -173,22 +173,16 @@ OUTPUT: A flat, rectangular wrap panel design ready for professional printing an
 
 
     const ai = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
+          "x-goog-api-key": GEMINI_API_KEY,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "gemini-3-pro-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          modalities: ["image"]
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
         })
       }
     );
@@ -200,7 +194,14 @@ OUTPUT: A flat, rectangular wrap panel design ready for professional printing an
     }
 
     const json = await ai.json();
-    const preview = json?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let preview: string | null = null;
+    const parts = json?.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        preview = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
 
     if (!preview) throw new Error("No image returned from AI");
 
