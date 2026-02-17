@@ -2,17 +2,16 @@
 // ⚠️ SUPABASE CLIENT CONFIGURATION - READ BEFORE MODIFYING ⚠️
 // =============================================================================
 //
-// ARCHITECTURE:
-// - supabase: Database client → YOUR Supabase (qxllysilzonrlyoaomce)
-// - lovableFunctions: Edge functions → YOUR Supabase (qxllysilzonrlyoaomce)
-// - lovable3DRenders: Lovable Supabase (wzwqhfbmymrengjqikjl)
-// - contentDB: Alias for lovable3DRenders - use for content_files queries
+// ARCHITECTURE (CONSOLIDATED — Feb 17 2026):
+// ALL data now lives in YOUR Supabase (qxllysilzonrlyoaomce).
+// - supabase: Database client → YOUR Supabase
+// - lovableFunctions: Edge functions → YOUR Supabase
+// - lovable3DRenders: NOW POINTS TO YOUR Supabase (was Lovable, migrated)
+// - contentDB: Alias for lovable3DRenders → YOUR Supabase
 //
-// ⚠️ CONTENT DATA LIVES IN LOVABLE SUPABASE (legacy data location)
-// Tables in Lovable: content_files, content_projects, content_calendar, etc.
-// Use contentDB (or lovable3DRenders) for all content/media library operations!
+// Lovable Supabase (wzwqhfbmymrengjqikjl) is DEPRECATED for data.
+// Lovable connection kept ONLY for legacy 3D render edge function calls.
 //
-// ⚠️ DO NOT change lovableFunctions to point to Lovable's Supabase
 // =============================================================================
 
 import { createClient } from '@supabase/supabase-js';
@@ -54,22 +53,22 @@ export const supabase = createClient<Database>(WPW_SUPABASE_URL, WPW_ANON_KEY, {
 export const lovableFunctions = createClient(WPW_SUPABASE_URL, WPW_ANON_KEY);
 
 // =============================================================================
-// LOVABLE CLIENT - 3D RENDERS + CONTENT DATA
+// CONTENT + RENDER CLIENT — NOW YOUR SUPABASE (consolidated Feb 17 2026)
 // =============================================================================
-// Used for:
-// - DesignPanelPro color renders
-// - ApproveFlow 3D studio renders
-// - generate-color-render, generate-studio-renders, generate-3d, generate-3dproof
-// - content_files, content_projects, content_calendar, etc. (legacy data location)
-// - Media Library uploads/queries
-export const lovable3DRenders = createClient(LOVABLE_SUPABASE_URL, LOVABLE_ANON_KEY);
+// All content tables (content_files, content_queue, content_calendar,
+// content_drafts, content_projects) now live in YOUR Supabase.
+// lovable3DRenders name kept for backward compat with 41+ importing files.
+export const lovable3DRenders = createClient(WPW_SUPABASE_URL, WPW_ANON_KEY);
+
+// contentDB: Alias for clarity — content_files, content_queue, etc.
+export const contentDB = lovable3DRenders;
 
 // =============================================================================
-// CONTENT DATABASE CLIENT (alias for clarity)
+// LOVABLE LEGACY — 3D RENDER EDGE FUNCTIONS ONLY
 // =============================================================================
-// Use this for content_files, content_projects, content_calendar, media-library storage
-// This is where all the content/video data actually lives!
-export const contentDB = lovable3DRenders;
+// Only used for calling edge functions on Lovable that haven't been migrated yet.
+// e.g. generate-3d, generate-3dproof if still deployed on Lovable.
+export const lovableLegacy = createClient(LOVABLE_SUPABASE_URL, LOVABLE_ANON_KEY);
 
 // =============================================================================
 // HELPER FUNCTION - Call edge functions on YOUR Supabase

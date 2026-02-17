@@ -13,12 +13,10 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase, lovableFunctions, lovable3DRenders } from "@/integrations/supabase/client";
 
 // =============================================================================
-// ⚠️ CONTENT DATA LOCATION NOTE
+// CONTENT DATA — CONSOLIDATED (Feb 17 2026)
 // =============================================================================
-// content_files data currently lives in Lovable's Supabase (wzwqhfbmymrengjqikjl)
-// NOT in WPW production (qxllysilzonrlyoaomce). This is a legacy data situation.
-// Using lovable3DRenders client to access content_files until data is migrated.
-// TODO: Migrate content_files to WPW production and update this to use `supabase`
+// content_files now lives in YOUR Supabase (qxllysilzonrlyoaomce).
+// lovable3DRenders now points to YOUR Supabase. Migration complete.
 // =============================================================================
 import { MediaUploader } from "./MediaUploader";
 import { MediaCard, MediaSelectMode } from "./MediaCard";

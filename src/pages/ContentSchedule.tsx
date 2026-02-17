@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Clock, GripVertical, Plus, Edit, Trash2, CheckCircle, Send } from 'lucide-react';
 import { format, addDays, startOfWeek } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, contentDB } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface ScheduledContent {

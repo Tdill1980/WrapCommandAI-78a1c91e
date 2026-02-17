@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useState } from "react";
 

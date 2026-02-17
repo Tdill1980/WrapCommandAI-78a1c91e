@@ -30,7 +30,7 @@ import {
   endOfWeek
 } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, contentDB } from '@/integrations/supabase/client';
 import { MainLayout } from '@/layouts/MainLayout';
 import { cn } from '@/lib/utils';
 import { ContentCalendarEditModal } from '@/components/calendar/ContentCalendarEditModal';
