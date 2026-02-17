@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 export interface ContentFile {
@@ -22,6 +22,10 @@ export interface ContentFile {
   vehicle_info: Record<string, unknown>;
   metadata: Record<string, unknown>;
   processing_status: string;
+  content_category: string | null;
+  visual_tags: Record<string, unknown> | null;
+  visual_analyzed_at: string | null;
+  ai_parsed_at: string | null;
   created_at: string;
   updated_at: string;
 }
