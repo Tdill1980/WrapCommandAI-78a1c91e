@@ -18,7 +18,7 @@ import {
   Film
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, contentDB } from '@/integrations/supabase/client';
 import { format, addDays, isBefore, isToday, startOfDay } from 'date-fns';
 import { GenerateMonthModal } from '@/components/studio/GenerateMonthModal';
 import { CampaignContentCreator } from '@/components/studio/CampaignContentCreator';

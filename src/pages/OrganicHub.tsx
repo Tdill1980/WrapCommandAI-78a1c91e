@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, contentDB } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import {
   Film,
@@ -93,28 +93,30 @@ export default function OrganicHub() {
     },
   ];
 
-  // Fetch real stats from ai_creatives (actual created content)
+  // Fetch real stats from content_queue (actual content pipeline)
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["organic-hub-stats"],
     queryFn: async () => {
-      // Get total creatives from ai_creatives
-      const { count: creativesCount } = await supabase
-        .from("ai_creatives")
-        .select("*", { count: "exact", head: true });
+      // Creatives = items in pipeline (draft, pending, processing)
+      const { count: creativesCount } = await contentDB
+        .from("content_queue")
+        .select("*", { count: "exact", head: true })
+        .in("status", ["draft", "pending", "processing"]);
 
-      // Get this week's creatives
+      // Completed count
+      const { count: completedCount } = await contentDB
+        .from("content_queue")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "completed");
+
+      // This week's completed
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
-      const { count: weekCount } = await supabase
-        .from("ai_creatives")
+      const { count: weekCount } = await contentDB
+        .from("content_queue")
         .select("*", { count: "exact", head: true })
-        .gte("created_at", weekAgo.toISOString());
-
-      // Get completed count for engagement proxy
-      const { count: completedCount } = await supabase
-        .from("ai_creatives")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "complete");
+        .eq("status", "completed")
+        .gte("updated_at", weekAgo.toISOString());
 
       return {
         reelsCreated: creativesCount || 0,
@@ -124,16 +126,19 @@ export default function OrganicHub() {
     },
   });
 
-  // Fetch recent creatives from ai_creatives
+  // Fetch recent content from content_queue
   const { data: recentReels = [] } = useQuery({
     queryKey: ["recent-creatives"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("ai_creatives")
-        .select("id, title, output_url, thumbnail_url, created_at, status")
+      const { data } = await contentDB
+        .from("content_queue")
+        .select("id, title, output_url, created_at, status")
         .order("created_at", { ascending: false })
         .limit(6);
-      return data || [];
+      return (data || []).map((item: any) => ({
+        ...item,
+        thumbnail_url: null,
+      }));
     },
   });
 
