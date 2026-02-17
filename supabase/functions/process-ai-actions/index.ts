@@ -159,6 +159,31 @@ async function executeAction(action: AIAction): Promise<{ ok: boolean; result: s
       return { ok: true, result: 'review_request_queued' };
     }
 
+    case "parse_content_file": {
+      // Invoke ai-parse-content for Content DNA tagging
+      const context = (payload.context || payload) as Record<string, unknown>;
+      console.log(`[process-ai-actions] Parsing content file: ${context?.content_file_id}`);
+      try {
+        const { data: parseResult, error: parseError } = await supabase.functions.invoke(
+          "ai-parse-content",
+          {
+            body: {
+              contentFileId: context?.content_file_id,
+              imageUrl: context?.file_url,
+              fileType: context?.file_type || "image",
+            },
+          }
+        );
+        if (parseError) {
+          return { ok: false, result: 'parse_error', error: parseError.message };
+        }
+        return { ok: true, result: 'content_parsed', detail: parseResult };
+      } catch (invokeErr) {
+        console.error(`[process-ai-actions] Failed to invoke ai-parse-content:`, invokeErr);
+        return { ok: false, result: 'parse_invoke_failed', error: String(invokeErr) };
+      }
+    }
+
     default:
       console.log(`[process-ai-actions] Unknown action_type: ${action.action_type}`);
       return { ok: true, result: `noop for ${action.action_type}` };
