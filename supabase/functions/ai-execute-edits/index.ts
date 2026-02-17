@@ -13,6 +13,42 @@ interface ClipSegment {
   label?: string;
 }
 
+/**
+ * Normalize scene fields so render-reel always gets what it expects.
+ * render-reel reads: start, end, text, textPosition, animation, clipUrl, sceneId, clipId
+ * AI blueprints may send: start_time/end_time, text_overlay, text_position, clip_url, scene_id, clip_id
+ * This function maps ALL naming conventions to the canonical form in ONE place.
+ */
+function normalizeSceneForRender(
+  scene: any,
+  index: number,
+  fallbackClipUrl: string,
+  approvedOverlay?: any
+): any {
+  const start = Number(scene.start ?? scene.start_time ?? 0);
+  const endRaw = Number(scene.end ?? scene.end_time ?? (start + 3));
+  const end = endRaw > start ? endRaw : start + 3;
+
+  // Approved overlay takes priority > blueprint text_overlay > blueprint text
+  const text = approvedOverlay?.text || scene.text_overlay || scene.text || undefined;
+  const textPosition = approvedOverlay?.position || scene.text_position || scene.textPosition || 'center';
+  const animation = approvedOverlay?.animation || scene.animation || 'pop';
+
+  return {
+    sceneId: scene.sceneId || scene.scene_id || `scene_${index + 1}`,
+    clipId: scene.clipId || scene.clip_id || `clip_${index + 1}`,
+    clipUrl: scene.clipUrl || scene.clip_url || scene.file_url || fallbackClipUrl,
+    start,
+    end,
+    purpose: scene.purpose || scene.label || 'content',
+    text,
+    textPosition,
+    animation,
+    cutReason: scene.cut_reason || scene.cutReason || undefined,
+    overlayApproved: !!approvedOverlay,
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -57,9 +93,9 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
+    const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
     if (!supabaseUrl || !supabaseKey) {
       console.error("[ai-execute-edits] FATAL: Supabase credentials not configured");
       return new Response(
@@ -208,54 +244,41 @@ serve(async (req) => {
       
       console.log("[ai-execute-edits] AUTHORITY PASSED: Using blueprint", blueprintId, "with", scenes.length, "scenes");
       
-      // Build clips array for render-reel (Creatomate expects HTTP URLs, not mux:// refs)
-      const clips: { url: string; trimStart: number; trimEnd: number }[] = [];
-      const overlays: { text: string; start: number; end: number; position?: string }[] = [];
-      
-      let cursor = 0;
-      for (let i = 0; i < scenes.slice(0, 8).length; i++) {
-        const scene = scenes[i];
-        const startTime = Number(scene.start_time);
-        const endTime = Number(scene.end_time);
-        
-        if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
-          console.error("[ai-execute-edits] Scene missing start_time/end_time:", scene);
-          continue;
+      // Source video URL — scenes are time-based trims from this
+      const sourceVideoUrl = editItem.source_url;
+
+      // ============ FETCH APPROVED OVERLAYS FROM scene_text_overlays ============
+      console.log("[ai-execute-edits] Fetching approved overlays for job:", video_edit_id);
+      const { data: approvedOverlays } = await supabase
+        .from("scene_text_overlays")
+        .select("*")
+        .eq("job_id", video_edit_id)
+        .eq("approved", true);
+
+      const approvedOverlayMap = new Map<string, any>();
+      if (approvedOverlays && approvedOverlays.length > 0) {
+        console.log("[ai-execute-edits] Found", approvedOverlays.length, "approved overlays");
+        for (const overlay of approvedOverlays) {
+          approvedOverlayMap.set(overlay.scene_id, overlay);
         }
-        
-        if (endTime > startTime) {
-          // Use the clip_url from blueprint, falling back to source_url
-          const clipUrl = scene.clip_url || scene.file_url || editItem.source_url;
-          const duration = endTime - startTime;
-          
-          clips.push({
-            url: clipUrl,
-            trimStart: startTime,
-            trimEnd: Math.min(endTime, videoDuration),
-          });
-          
-          // ✅ FIX: Use text_overlay from blueprint (intent-aware), fallback to scene.text
-          const overlayText = scene.text_overlay || scene.text;
-          if (overlayText) {
-            overlays.push({
-              text: overlayText,
-              start: cursor,
-              end: cursor + Math.min(duration, 3), // overlay max 3s
-              position: scene.text_position || 'center',
-            });
-          }
-          
-          cursor += duration;
-        }
+      } else {
+        console.log("[ai-execute-edits] No approved overlays found - using blueprint text");
       }
-      
-      if (clips.length === 0) {
+
+      // ============ NORMALIZE ALL SCENES VIA SINGLE FUNCTION ============
+      const blueprintScenes = scenes.slice(0, 8).map((scene: any, i: number) => {
+        const sceneId = scene.sceneId || scene.scene_id || `scene_${i + 1}`;
+        const approvedOverlay = approvedOverlayMap.get(sceneId);
+        return normalizeSceneForRender(scene, i, sourceVideoUrl, approvedOverlay);
+      }).filter((s: any) => s.clipUrl && s.end > s.start);
+
+      if (blueprintScenes.length === 0) {
         console.error("[ai-execute-edits] Blueprint had scenes but none were valid");
         await updateQueueFailed(supabase, video_edit_id, "Blueprint scenes were invalid (no valid time ranges)", {
           stage: "scene_validation",
           ai_edit_suggestions: aiSuggestions,
           scenes_parsed: scenes.length,
-          clips_valid: clips.length,
+          clips_valid: 0,
           render_type,
         });
         return new Response(
@@ -264,66 +287,20 @@ serve(async (req) => {
         );
       }
 
-      console.log("[ai-execute-edits] Calling render-reel with", clips.length, "clips");
+      // Calculate total duration from normalized scenes
+      let cursor = 0;
+      for (const s of blueprintScenes) {
+        cursor += (s.end - s.start);
+      }
+
+      console.log("[ai-execute-edits] Calling render-reel with", blueprintScenes.length, "scenes");
 
       try {
-        // ============ BUILD PROPER SCENEBLUEPRINT FOR RENDER-REEL ============
-        // render-reel expects: { job_id, blueprint: SceneBlueprint, music_url }
         
-        // Map clips back to SceneBlueprint.scenes format
-        // The source video URL is used for ALL scenes since we're trimming from the same source
-        const sourceVideoUrl = editItem.source_url;
-        
-        // ============ FETCH APPROVED OVERLAYS FROM scene_text_overlays ============
-        console.log("[ai-execute-edits] Fetching approved overlays for job:", video_edit_id);
-        const { data: approvedOverlays } = await supabase
-          .from("scene_text_overlays")
-          .select("*")
-          .eq("job_id", video_edit_id)
-          .eq("approved", true);
-        
-        const approvedOverlayMap = new Map<string, any>();
-        if (approvedOverlays && approvedOverlays.length > 0) {
-          console.log("[ai-execute-edits] Found", approvedOverlays.length, "approved overlays");
-          for (const overlay of approvedOverlays) {
-            approvedOverlayMap.set(overlay.scene_id, overlay);
-          }
-        } else {
-          console.log("[ai-execute-edits] No approved overlays found - using blueprint text");
-        }
-        
-        const blueprintScenes = scenes.slice(0, 8).map((scene: any, i: number) => {
-          const startTime = Number(scene.start_time) || 0;
-          const endTime = Number(scene.end_time) || Number(scene.start_time) + 3;
-          const sceneId = scene.scene_id || `scene_${i + 1}`;
-          
-          // ✅ APPROVED OVERLAY TAKES PRIORITY over blueprint intent
-          const approvedOverlay = approvedOverlayMap.get(sceneId);
-          const overlayText = approvedOverlay?.text || scene.text_overlay || scene.text;
-          const overlayPosition = approvedOverlay?.position || scene.text_position || 'center';
-          const overlayAnimation = approvedOverlay?.animation || scene.animation || 'pop';
-          
-          return {
-            sceneId,
-            clipId: scene.clip_id || `clip_${i + 1}`,
-            // CRITICAL: Use the source video URL - scenes are time-based trims from the same source
-            clipUrl: scene.clip_url || scene.file_url || sourceVideoUrl,
-            start: startTime,
-            end: endTime > startTime ? endTime : startTime + 3, // Ensure valid timing
-            purpose: scene.purpose || scene.label || 'content',
-            text: overlayText || undefined,
-            textPosition: overlayPosition,
-            animation: overlayAnimation,
-            cutReason: scene.cut_reason || undefined,
-            overlayApproved: !!approvedOverlay, // Flag for tracking
-          };
-        }).filter((s: any) => s.clipUrl && s.end > s.start); // Only valid scenes with URLs
-        
-        console.log("[ai-execute-edits] Blueprint scenes built:", blueprintScenes.length, 
+        console.log("[ai-execute-edits] Blueprint scenes built:", blueprintScenes.length,
           "from source:", sourceVideoUrl?.substring(0, 50) + "...",
           "with approved overlays:", approvedOverlays?.length || 0);
-        
-        // Build the full SceneBlueprint object
+
         const blueprint = {
           id: blueprintId || `bp_${video_edit_id}`,
           platform: 'instagram',
