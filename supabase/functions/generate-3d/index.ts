@@ -127,26 +127,37 @@ RENDERING QUALITY:
 
 ${vehicle.render_prompt || 'Emphasize accurate vehicle proportions and professional wrap installation appearance.'}`;
 
+    // Fetch panel image and convert to base64 for native Gemini API
+    const userParts: any[] = [{ text: prompt }];
+    try {
+      const imgRes = await fetch(panelUrl);
+      if (imgRes.ok) {
+        const imgMime = imgRes.headers.get("content-type") || "image/png";
+        const imgBuf = await imgRes.arrayBuffer();
+        const uint8 = new Uint8Array(imgBuf);
+        let binary = "";
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+          const chunk = uint8.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+        }
+        userParts.push({ inlineData: { mimeType: imgMime, data: btoa(binary) } });
+      }
+    } catch (imgErr) {
+      console.error("Failed to fetch panel image:", imgErr);
+    }
+
     const ai = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
+          "x-goog-api-key": GEMINI_API_KEY,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "gemini-3-pro-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                { type: "image_url", image_url: { url: panelUrl } }
-              ]
-            }
-          ],
-          modalities: ["image"]
+          contents: [{ role: "user", parts: userParts }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
         })
       }
     );
@@ -158,7 +169,14 @@ ${vehicle.render_prompt || 'Emphasize accurate vehicle proportions and professio
     }
 
     const json = await ai.json();
-    const render = json?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let render: string | null = null;
+    const resParts = json?.candidates?.[0]?.content?.parts || [];
+    for (const part of resParts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        render = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
 
     if (!render) throw new Error("No 3D render returned");
 

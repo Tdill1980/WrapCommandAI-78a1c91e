@@ -4,21 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Search, Upload, Image, Video, Music, Folder, 
+import {
+  Search, Upload, Image, Video, Music, Folder,
   Grid3X3, List, X, Play, Download, Trash2, Sparkles, FileStack, CheckCircle, Lightbulb,
-  Wand2, Loader2, AlertTriangle, Scan
+  Wand2, Loader2, AlertTriangle, Scan, SlidersHorizontal
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase, lovableFunctions, lovable3DRenders } from "@/integrations/supabase/client";
 
 // =============================================================================
-// ⚠️ CONTENT DATA LOCATION NOTE
+// CONTENT DATA — CONSOLIDATED (Feb 17 2026)
 // =============================================================================
-// content_files data currently lives in Lovable's Supabase (wzwqhfbmymrengjqikjl)
-// NOT in WPW production (qxllysilzonrlyoaomce). This is a legacy data situation.
-// Using lovable3DRenders client to access content_files until data is migrated.
-// TODO: Migrate content_files to WPW production and update this to use `supabase`
+// content_files now lives in YOUR Supabase (qxllysilzonrlyoaomce).
+// lovable3DRenders now points to YOUR Supabase. Migration complete.
 // =============================================================================
 import { MediaUploader } from "./MediaUploader";
 import { MediaCard, MediaSelectMode } from "./MediaCard";
@@ -55,6 +53,10 @@ export interface MediaFile {
     ai_description?: string;
     tagged_at?: string;
   } | null;
+  ai_labels?: Record<string, unknown> | null;
+  vehicle_info?: Record<string, unknown> | null;
+  dominant_colors?: string[] | null;
+  ai_parsed_at?: string | null;
 }
 
 const FILE_TYPES = [
@@ -89,6 +91,10 @@ export function MediaLibrary({
   const [tagEditorFile, setTagEditorFile] = useState<MediaFile | null>(null);
   const [bulkRetagging, setBulkRetagging] = useState(false);
   const [showAnalysisConfirm, setShowAnalysisConfirm] = useState(false);
+  // AI DNA filters
+  const [vehicleFilter, setVehicleFilter] = useState("all");
+  const [wrapTypeFilter, setWrapTypeFilter] = useState("all");
+  const [showAiFilters, setShowAiFilters] = useState(false);
   
   const { analyzeAllUntagged, getStatus, analyzing } = useVisualAnalyzer();
   const [analysisStatus, setAnalysisStatus] = useState<{ analyzed: number; unanalyzed: number } | null>(null);
@@ -116,7 +122,7 @@ export function MediaLibrary({
   const { data: files = [], isLoading, refetch } = useQuery({
     queryKey: ["media-library", filterType, category],
     queryFn: async () => {
-      // Query Lovable Supabase where content_files data actually lives
+      // Query YOUR Supabase where content_files lives (consolidated Feb 2026)
       let query = lovable3DRenders
         .from("content_files")
         .select("*")
@@ -136,15 +142,64 @@ export function MediaLibrary({
     },
   });
 
+  // Extract unique vehicle makes and wrap types from AI labels for filter dropdowns
+  const { vehicleMakes, wrapTypes } = useMemo(() => {
+    const makes = new Set<string>();
+    const wraps = new Set<string>();
+    for (const file of files) {
+      const labels = file.ai_labels as Record<string, unknown> | null;
+      if (!labels) continue;
+      const make = labels.vehicle_make as string;
+      const wrapType = labels.wrap_type as string;
+      if (make) makes.add(make);
+      if (wrapType) wraps.add(wrapType);
+    }
+    return {
+      vehicleMakes: Array.from(makes).sort(),
+      wrapTypes: Array.from(wraps).sort(),
+    };
+  }, [files]);
+
   const filteredFiles = useMemo(() => {
-    if (!searchQuery.trim()) return files;
-    
-    const q = searchQuery.toLowerCase();
-    return files.filter((file) => 
-      file.original_filename?.toLowerCase().includes(q) ||
-      file.tags?.some((tag) => tag.toLowerCase().includes(q))
-    );
-  }, [files, searchQuery]);
+    let result = files;
+
+    // Text search across filename, tags, and AI labels
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((file) => {
+        if (file.original_filename?.toLowerCase().includes(q)) return true;
+        if (file.tags?.some((tag) => tag.toLowerCase().includes(q))) return true;
+        // Search AI labels
+        const labels = file.ai_labels as Record<string, unknown> | null;
+        if (labels) {
+          const make = (labels.vehicle_make as string || "").toLowerCase();
+          const model = (labels.vehicle_model as string || "").toLowerCase();
+          const wrapType = (labels.wrap_type as string || "").toLowerCase();
+          const mood = (labels.mood as string || "").toLowerCase();
+          if (make.includes(q) || model.includes(q) || wrapType.includes(q) || mood.includes(q)) return true;
+        }
+        return false;
+      });
+    }
+
+    // Vehicle make filter
+    if (vehicleFilter !== "all") {
+      result = result.filter((file) => {
+        const labels = file.ai_labels as Record<string, unknown> | null;
+        return labels && (labels.vehicle_make as string) === vehicleFilter;
+      });
+    }
+
+    // Wrap type filter
+    if (wrapTypeFilter !== "all") {
+      result = result.filter((file) => {
+        const labels = file.ai_labels as Record<string, unknown> | null;
+        return labels && (labels.wrap_type as string) === wrapTypeFilter;
+      });
+    }
+
+    return result;
+  }, [files, searchQuery, vehicleFilter, wrapTypeFilter]);
 
   const handleFileSelect = (file: MediaFile, mode?: MediaSelectMode) => {
     if (onSelect) {
@@ -397,6 +452,74 @@ export function MediaLibrary({
           </div>
         </div>
       </div>
+
+      {/* AI DNA Filters */}
+      {(vehicleMakes.length > 0 || wrapTypes.length > 0) && (
+        <div className="space-y-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => setShowAiFilters(!showAiFilters)}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            AI Filters
+            {(vehicleFilter !== "all" || wrapTypeFilter !== "all") && (
+              <Badge variant="secondary" className="text-[10px] ml-1 px-1.5">
+                Active
+              </Badge>
+            )}
+          </Button>
+          {showAiFilters && (
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-muted/30">
+              {vehicleMakes.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground whitespace-nowrap">Vehicle:</label>
+                  <select
+                    className="bg-background text-foreground text-xs p-1.5 rounded border border-border min-w-[120px]"
+                    value={vehicleFilter}
+                    onChange={(e) => setVehicleFilter(e.target.value)}
+                  >
+                    <option value="all">All Vehicles</option>
+                    {vehicleMakes.map((make) => (
+                      <option key={make} value={make}>{make}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {wrapTypes.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground whitespace-nowrap">Wrap:</label>
+                  <select
+                    className="bg-background text-foreground text-xs p-1.5 rounded border border-border min-w-[120px]"
+                    value={wrapTypeFilter}
+                    onChange={(e) => setWrapTypeFilter(e.target.value)}
+                  >
+                    <option value="all">All Wraps</option>
+                    {wrapTypes.map((wt) => (
+                      <option key={wt} value={wt}>{wt}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {(vehicleFilter !== "all" || wrapTypeFilter !== "all") && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7"
+                  onClick={() => { setVehicleFilter("all"); setWrapTypeFilter("all"); }}
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Clear
+                </Button>
+              )}
+              <span className="text-[10px] text-muted-foreground ml-auto">
+                {filteredFiles.length} result{filteredFiles.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Selected Count */}
       {selectedFiles.length > 0 && (

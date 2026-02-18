@@ -15,8 +15,8 @@ serve(async (req) => {
   try {
     const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
     const supabase = createClient(
-      Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      (Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')) ?? '',
+      (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) ?? ''
     );
 
     const { invoiceId } = await req.json();

@@ -59,6 +59,7 @@ import { ContentMetadataPanel, useContentMetadata, ContentMetadata } from "@/com
 import { MediaFile } from "@/components/media/MediaLibrary";
 import { DARA_FORMATS, DaraFormat } from "@/lib/dara-denney-formats";
 import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { downloadToDevice } from "@/lib/downloadUtils";
 import { sanitizeForJson } from "@/lib/sanitizeForJson";
 import { createCreativeWithTags, saveBlueprintSnapshot, updateCreative, replaceStatusTag, SourceType } from "@/lib/creativeVault";
 import { finalizeRender } from "@/lib/finalizeRender";
@@ -1073,7 +1074,8 @@ export default function ReelBuilder() {
     // Prioritize finalized URL (guaranteed to work), fall back to saved URL
     const downloadUrl = finalizedDownloadUrl || savedVideoUrl;
     if (downloadUrl) {
-      window.open(downloadUrl, '_blank');
+      const filename = `reel-${Date.now()}.mp4`;
+      downloadToDevice(downloadUrl, filename);
     } else {
       toast.error('Download not ready yet');
     }

@@ -123,12 +123,23 @@ async function executeAction(action: AIAction): Promise<{ ok: boolean; result: s
     }
 
     case "portfolio_to_contentbox": {
-      // Queue portfolio media for ContentBox processing
+      // Invoke dedicated processor that copies portfolio media into content_files
       const context = (payload.context || payload) as Record<string, unknown>;
-      console.log(`[process-ai-actions] Portfolio sync queued for job ${context?.portfolio_job_id}`);
-      // In production, this would copy media files from portfolio to contentbox storage
-      // For now, we mark as processed so it can be manually handled
-      return { ok: true, result: 'portfolio_sync_queued' };
+      console.log(`[process-ai-actions] Invoking process-portfolio-content for job ${context?.portfolio_job_id}`);
+      try {
+        const { data: ppcResult, error: ppcError } = await supabase.functions.invoke(
+          "process-portfolio-content",
+          { body: {} }
+        );
+        if (ppcError) {
+          console.error(`[process-ai-actions] process-portfolio-content error:`, ppcError);
+          return { ok: false, result: 'portfolio_processor_error', error: ppcError.message };
+        }
+        return { ok: true, result: 'portfolio_processed', detail: ppcResult };
+      } catch (invokeErr) {
+        console.error(`[process-ai-actions] Failed to invoke process-portfolio-content:`, invokeErr);
+        return { ok: true, result: 'portfolio_sync_queued' };
+      }
     }
 
     case "send_review_request": {
@@ -146,6 +157,31 @@ async function executeAction(action: AIAction): Promise<{ ok: boolean; result: s
       // TODO: Integrate with Resend to send actual review request email
       // For now, mark as processed
       return { ok: true, result: 'review_request_queued' };
+    }
+
+    case "parse_content_file": {
+      // Invoke ai-parse-content for Content DNA tagging
+      const context = (payload.context || payload) as Record<string, unknown>;
+      console.log(`[process-ai-actions] Parsing content file: ${context?.content_file_id}`);
+      try {
+        const { data: parseResult, error: parseError } = await supabase.functions.invoke(
+          "ai-parse-content",
+          {
+            body: {
+              contentFileId: context?.content_file_id,
+              imageUrl: context?.file_url,
+              fileType: context?.file_type || "image",
+            },
+          }
+        );
+        if (parseError) {
+          return { ok: false, result: 'parse_error', error: parseError.message };
+        }
+        return { ok: true, result: 'content_parsed', detail: parseResult };
+      } catch (invokeErr) {
+        console.error(`[process-ai-actions] Failed to invoke ai-parse-content:`, invokeErr);
+        return { ok: false, result: 'parse_invoke_failed', error: String(invokeErr) };
+      }
     }
 
     default:

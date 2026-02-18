@@ -41,17 +41,16 @@ Output a SINGLE flat design image.
     `;
 
     const aiRes = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
+          "x-goog-api-key": GEMINI_API_KEY,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "gemini-3-pro-image-preview",
-          messages: [{ role: "user", content: aiPrompt }],
-          modalities: ["image"]
+          contents: [{ role: "user", parts: [{ text: aiPrompt }] }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
         })
       }
     );
@@ -63,7 +62,14 @@ Output a SINGLE flat design image.
     }
 
     const data = await aiRes.json();
-    const imageUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let imageUrl: string | null = null;
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
 
     if (!imageUrl) throw new Error("No panel generated");
 

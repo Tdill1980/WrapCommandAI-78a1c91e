@@ -96,51 +96,63 @@ serve(async (req) => {
     console.log(`Generating ${angle} render for ${logName}`);
 
     const inputImageUrl = isApproveFlowMode ? designUrl : customDesignUrl;
-    const messages: any[] = [
-      {
-        role: "system",
-        content: "You are an expert automotive visualization AI specialized in creating photorealistic 3D renders of vehicles with custom vinyl wraps. Generate images that look like professional automotive photography."
-      },
-      {
-        role: "user",
-        content: inputImageUrl ? [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: inputImageUrl } }
-        ] : prompt
-      }
-    ];
+    const systemPrompt = "You are an expert automotive visualization AI specialized in creating photorealistic 3D renders of vehicles with custom vinyl wraps. Generate images that look like professional automotive photography.";
+    const userParts: any[] = [{ text: systemPrompt + "\n\n" + prompt }];
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-3-pro-image-preview",
-        messages,
-        modalities: ["image", "text"]
-      }),
-    });
+    // If there's an input image, fetch and convert to base64 for native Gemini API
+    if (inputImageUrl) {
+      try {
+        const imgRes = await fetch(inputImageUrl);
+        if (imgRes.ok) {
+          const imgMime = imgRes.headers.get("content-type") || "image/png";
+          const imgBuf = await imgRes.arrayBuffer();
+          const uint8 = new Uint8Array(imgBuf);
+          let binary = "";
+          const chunkSize = 8192;
+          for (let i = 0; i < uint8.length; i += chunkSize) {
+            const chunk = uint8.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+          }
+          userParts.push({ inlineData: { mimeType: imgMime, data: btoa(binary) } });
+        }
+      } catch (imgErr) {
+        console.error("Failed to fetch input image:", imgErr);
+      }
+    }
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": GEMINI_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: userParts }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      
+
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       if (response.status === 402) {
         return new Response(
           JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
       return new Response(
         JSON.stringify({ error: "Failed to generate render" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -148,7 +160,14 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    let imageUrl: string | null = null;
+    const responseParts = data?.candidates?.[0]?.content?.parts || [];
+    for (const part of responseParts) {
+      if (part.inlineData?.mimeType?.startsWith("image/")) {
+        imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
 
     if (!imageUrl) {
       console.error("No image in AI response");
