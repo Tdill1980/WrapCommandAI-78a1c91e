@@ -36,30 +36,113 @@ export default function ApproveFlowList() {
     fetchProjects();
   }, []);
 
+  // Design product IDs that qualify for ApproveFlow
+  const DESIGN_PRODUCT_IDS = [234, 58160, 290, 289];
+
   const syncFromWooCommerce = async () => {
     try {
       setSyncing(true);
       toast({
         title: 'Syncing Projects',
-        description: 'Fetching recent orders from WooCommerce...',
+        description: 'Fetching recent orders from WooCommerce via proxy...',
       });
 
-      const { data, error } = await lovableFunctions.functions.invoke('sync-woo-manual', {
-        body: { target: 'approveflow', days: 5 }
+      // Step 1: Fetch recent orders via woo-proxy (browser → edge fn → WooCommerce)
+      // This avoids the Cloudflare block that sync-woo-manual hits
+      const { data: orders, error: proxyError } = await lovableFunctions.functions.invoke('woo-proxy', {
+        body: { action: 'listRecentOrders', days: 30, perPage: 50 }
       });
 
-      if (error) throw error;
+      if (proxyError) throw proxyError;
+      if (!orders || !Array.isArray(orders) || orders.length === 0) {
+        toast({ title: 'No Orders Found', description: 'No recent WooCommerce orders in the last 30 days.' });
+        return;
+      }
+
+      // Step 2: Filter to design product orders only
+      const designOrders = orders.filter((order: any) => {
+        if (!order.line_items || !Array.isArray(order.line_items)) return false;
+        return order.line_items.some((item: any) => DESIGN_PRODUCT_IDS.includes(item.product_id));
+      });
+
+      if (designOrders.length === 0) {
+        toast({ title: 'No Design Orders', description: `Found ${orders.length} orders but none contain design products.` });
+        return;
+      }
+
+      // Step 3: Upsert each design order into approveflow_projects
+      let synced = 0;
+      let skipped = 0;
+
+      for (const order of designOrders) {
+        const orderNumber = order.number?.toString();
+        if (!orderNumber) continue;
+
+        // Check if project already exists
+        const { data: existing } = await supabase
+          .from('approveflow_projects')
+          .select('id')
+          .eq('order_number', orderNumber)
+          .maybeSingle();
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        const customerName = `${order.billing?.first_name || ''} ${order.billing?.last_name || ''}`.trim() || 'Unknown Customer';
+        const designItem = order.line_items?.find((item: any) => DESIGN_PRODUCT_IDS.includes(item.product_id));
+        const productType = designItem?.name || order.line_items?.[0]?.name || 'Custom Vehicle Wrap Design';
+
+        // Extract design instructions from customer_note or meta_data
+        let designInstructions = '';
+        if (order.customer_note && order.customer_note.trim().length > 0) {
+          designInstructions = order.customer_note.trim();
+        } else if (order.meta_data && Array.isArray(order.meta_data)) {
+          for (const meta of order.meta_data) {
+            if (!meta.key) continue;
+            const keyLower = meta.key.toLowerCase();
+            const isDesignField = keyLower.includes('describe') || keyLower.includes('design') ||
+              keyLower.includes('instruction') || keyLower.includes('detail') ||
+              keyLower.includes('requirement') || keyLower.includes('note') ||
+              keyLower.includes('message') || keyLower.includes('custom');
+            const valueStr = typeof meta.value === 'string' ? meta.value :
+              typeof meta.value === 'object' ? JSON.stringify(meta.value) : String(meta.value || '');
+            if (isDesignField && valueStr.trim().length > 10) {
+              designInstructions = valueStr.trim();
+              break;
+            }
+          }
+        }
+
+        const { error: insertError } = await supabase
+          .from('approveflow_projects')
+          .insert({
+            order_number: orderNumber,
+            customer_name: customerName,
+            customer_email: order.billing?.email || null,
+            product_type: productType,
+            order_total: parseFloat(order.total) || null,
+            status: 'design_requested',
+            design_instructions: designInstructions || null,
+          });
+
+        if (!insertError) {
+          synced++;
+        }
+      }
 
       toast({
         title: 'Sync Complete',
-        description: `Synced ${data.syncedApproveFlow} projects, skipped ${data.skipped} existing`,
+        description: `Synced ${synced} new projects, ${skipped} already existed (${orders.length} total WooCommerce orders checked)`,
       });
 
       await fetchProjects();
     } catch (error: any) {
+      console.error('[ApproveFlowList] Sync error:', error);
       toast({
         title: 'Sync Failed',
-        description: error.message,
+        description: error.message || 'Unable to fetch from WooCommerce',
         variant: 'destructive',
       });
     } finally {

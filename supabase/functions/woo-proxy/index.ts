@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { action, orderId, orderNumber, data } = await req.json();
+    const { action, orderId, orderNumber, data, days, perPage } = await req.json();
 
     // Validate user authentication
     const authHeader = req.headers.get("Authorization");
@@ -88,6 +88,24 @@ serve(async (req) => {
           }
         );
         break;
+
+      case "listRecentOrders": {
+        // Fetch recent orders with configurable lookback and page size
+        const lookbackDays = days || 30;
+        const limit = Math.min(perPage || 50, 100);
+        const afterDate = new Date();
+        afterDate.setDate(afterDate.getDate() - lookbackDays);
+        const afterISO = afterDate.toISOString();
+        const listUrl = `${wooUrl}/wp-json/wc/v3/orders?per_page=${limit}&orderby=date&order=desc&after=${afterISO}`;
+        console.log(`[woo-proxy] Fetching recent orders: last ${lookbackDays} days, limit ${limit}`);
+        response = await fetch(listUrl, {
+          headers: {
+            Authorization: `Basic ${authString}`,
+            "Content-Type": "application/json",
+          },
+        });
+        break;
+      }
 
       case "updateOrder":
         if (!orderId) {
