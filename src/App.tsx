@@ -108,6 +108,7 @@ import AIApprovals from "./pages/AIApprovals";
 import BulkVariationReview from "./pages/BulkVariationReview";
 import QuoteStatsDashboard from "./pages/QuoteStatsDashboard";
 import RenderTestLab from "./pages/RenderTestLab";
+import BatchRenderStudio from "./pages/BatchRenderStudio";
 import QuoteToolAdmin from "./pages/QuoteToolAdmin";
 import TagManager from "./pages/TagManager";
 import Backlog from "./pages/Backlog";
@@ -179,6 +180,7 @@ const App = () => (
             <Route path="/mightymail/inbox" element={<MightymailInbox />} />
             <Route path="/design-desk" element={<DesignDesk />} />
             <Route path="/render-lab" element={<RenderTestLab />} />
+            <Route path="/batch-render" element={<BatchRenderStudio />} />
             <Route path="/mightymail/analytics" element={<MightymailAnalytics />} />
             <Route path="/quote-drafts" element={<QuoteDrafts />} />
             <Route path="/ai-pipeline" element={<AIPipeline />} />

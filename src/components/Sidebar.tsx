@@ -46,6 +46,7 @@ interface NavigationSection {
 const coreItems: NavigationItem[] = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, roles: ["beta_shop", "affiliate", "admin"] },
   { name: "ApproveFlow", path: "/approveflow", icon: CheckCircle, roles: ["beta_shop", "admin"] },
+  { name: "Batch Render", path: "/batch-render", icon: Sparkles, roles: ["beta_shop", "admin"] },
   { 
     name: "MyShopFlow", 
     path: "/my-shopflow", 
