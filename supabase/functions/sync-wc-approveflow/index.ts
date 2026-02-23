@@ -476,11 +476,13 @@ You can also track your order anytime through **MyShopFlow**.`;
   } catch (error) {
     console.error('Error in sync-wc-approveflow:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Always return 200 so the Supabase client can display the structured error
+    // payload instead of failing with generic "Edge Function returned a non-2xx status code".
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      JSON.stringify({ success: false, error: errorMessage }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }

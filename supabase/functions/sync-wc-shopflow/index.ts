@@ -534,9 +534,11 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error syncing WooCommerce to ShopFlow:', error);
+    // Always return 200 so the Supabase client can display the structured error
+    // payload instead of failing with generic "Edge Function returned a non-2xx status code".
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

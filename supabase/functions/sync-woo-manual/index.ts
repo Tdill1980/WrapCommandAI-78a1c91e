@@ -509,9 +509,11 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Manual sync error:', error);
+    // Always return 200 so the Supabase client can display the structured error
+    // payload instead of failing with generic "Edge Function returned a non-2xx status code".
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

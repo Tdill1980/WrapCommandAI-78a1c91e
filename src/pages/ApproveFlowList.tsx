@@ -50,9 +50,14 @@ export default function ApproveFlowList() {
 
       if (error) throw error;
 
+      // Edge function returns 200 with { success: false, error } on failure
+      if (data && !data.success && data.error) {
+        throw new Error(data.error);
+      }
+
       toast({
         title: 'Sync Complete',
-        description: `Synced ${data.syncedApproveFlow} projects, skipped ${data.skipped} existing`,
+        description: `Synced ${data?.syncedApproveFlow ?? 0} projects, skipped ${data?.skipped ?? 0} existing`,
       });
 
       await fetchProjects();

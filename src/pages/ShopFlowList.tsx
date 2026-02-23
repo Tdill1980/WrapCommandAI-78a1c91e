@@ -55,10 +55,18 @@ export default function ShopFlowList() {
           description: error.message || "Failed to sync orders from WooCommerce",
           variant: "destructive",
         });
+      } else if (data && !data.success && data.error) {
+        // Edge function returns 200 with { success: false, error } on failure
+        console.error('Sync error:', data.error);
+        toast({
+          title: "Sync Failed",
+          description: data.error,
+          variant: "destructive",
+        });
       } else {
         toast({
           title: "Sync Complete",
-          description: `Synced ${data.syncedShopFlow} orders from last ${selectedDays} ${parseInt(selectedDays) === 1 ? 'day' : 'days'}`,
+          description: `Synced ${data?.syncedShopFlow ?? 0} orders from last ${selectedDays} ${parseInt(selectedDays) === 1 ? 'day' : 'days'}`,
         });
         refetch();
       }

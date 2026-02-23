@@ -617,10 +617,12 @@ Deno.serve(async (req) => {
     );
   } catch (error: any) {
     console.error("[ProcessResync] Error:", error);
+    // Return 200 with error payload so Supabase client passes through the actual error
+    // instead of generic "Edge Function returned a non-2xx status code".
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       {
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );

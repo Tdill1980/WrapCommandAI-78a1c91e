@@ -359,6 +359,11 @@ export const useShopFlow = (orderId?: string) => {
 
       if (error) throw error;
 
+      // Edge function returns 200 with { success: false, error } on failure
+      if (data && !data.success && data.error) {
+        throw new Error(data.error);
+      }
+
       console.log('[ShopFlow] sync-woo-manual result:', data);
       const syncedCount = data?.syncedShopFlow ?? data?.processed ?? 0;
       const skippedCount = data?.skipped ?? 0;

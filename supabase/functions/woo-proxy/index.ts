@@ -59,8 +59,10 @@ serve(async (req) => {
 
     if (!key || !secret) {
       console.error("WooCommerce credentials not configured");
+      // Return 200 with error payload so Supabase client passes through the actual error
+      // instead of generic "Edge Function returned a non-2xx status code".
       return new Response(JSON.stringify({ error: "WooCommerce credentials not configured" }), {
-        status: 500,
+        status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -119,8 +121,9 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[woo-proxy] WooCommerce API error: ${response.status} - ${errorText}`);
+      // Return 200 with error payload so Supabase client passes through the actual error
       return new Response(JSON.stringify({ error: `WooCommerce API error: ${response.status}` }), {
-        status: response.status,
+        status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -134,8 +137,9 @@ serve(async (req) => {
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("[woo-proxy] Error:", errorMessage);
+    // Return 200 with error payload so Supabase client passes through the actual error
     return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+      status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }

@@ -104,7 +104,12 @@ export function ApproveFlowSourceOfTruth({
       });
 
       if (proxyError) throw proxyError;
-      
+
+      // woo-proxy now returns 200 with { error } on failure
+      if (orderData && orderData.error) {
+        throw new Error(orderData.error);
+      }
+
       if (!orderData || (Array.isArray(orderData) && orderData.length === 0)) {
         throw new Error(`Order #${orderNumber} not found in WooCommerce`);
       }
