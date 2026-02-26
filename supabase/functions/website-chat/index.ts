@@ -32,6 +32,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { getVehicleSqFt, VehicleSqFtResult } from "../_shared/mighty-vehicle-sqft.ts";
+import { logConversationEvent, logQuoteEvent, logEscalationWithEmail } from "../_shared/conversation-events.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -126,7 +127,7 @@ PRICING (Print-Only - Customer arranges local installation):
 PRINTED WRAP FILMS (per square foot):
 - Avery MPI 1105 with DOL 1460Z Lamination: $5.27/sqft
 - 3M IJ180Cv3 with 8518 Lamination: $5.27/sqft ← SAME PRICE AS AVERY!
-- Window Perf 50/50: $5.32/sqft
+- Window Perf 50/50: $5.95/sqft
 
 CUT CONTOUR VINYL (per square foot, weeded & masked):
 - Avery Cut Contour: $6.32/sqft
@@ -1128,7 +1129,7 @@ Customer asked about windows. We have TWO window products - need to clarify!
 
 SAY: "Great question! We have two options for windows:
 
-1️⃣ **Perforated Window Vinyl (Window Perf)** - $5.32/sqft
+1️⃣ **Perforated Window Vinyl (Window Perf)** - $5.95/sqft
    - See-through from inside, graphics visible outside
    - Perfect for rear windows, storefronts
    - Order here: https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/
@@ -1311,23 +1312,17 @@ DO NOT say "Grant will reach out" - give the link directly!`;
     else if (escalationType && !chatState.escalations_sent?.includes(escalationType)) {
       const teamMember = WPW_TEAM[escalationType];
       
-      // Log escalation
+      // Log escalation via OS Spine
       try {
-        await supabase.from('conversation_events').insert({
-          conversation_id: conversationId,
-          organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf', // FIXED: Correct WPW org ID
-          event_type: 'escalation',
-          event_subtype: escalationType,
-          actor: 'jordan_agent',
-          metadata: {
-            reason: escalationType,
-            trigger_message: message_text.substring(0, 500),
-            customer_email: chatState.customer_email || null,
-            customer_name: chatState.customer_name || null,
-            customer_phone: chatState.customer_phone || null,
-            routed_to: teamMember.email
-          }
-        });
+        await logConversationEvent(supabase, conversationId, 'escalation_sent', 'jordan_lee', {
+          reason: escalationType,
+          message_excerpt: message_text.substring(0, 500),
+          customer_email: chatState.customer_email || undefined,
+          customer_name: chatState.customer_name || undefined,
+          customer_phone: chatState.customer_phone || undefined,
+          escalation_target: teamMember.email,
+          priority: 'high',
+        }, escalationType);
       } catch (e) {
         console.error('[JordanLee] Failed to log escalation:', e);
       }
@@ -1439,6 +1434,18 @@ SAY: "I'm connecting you with ${teamMember.name} now - they'll reach out to you 
 <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #e6007e;">${message_text}</div>
 `
             });
+            // Log escalation email via OS Spine
+            await logEscalationWithEmail(supabase, conversationId, escalationType, {
+              recipients: [teamMember.email],
+              subject: `[ESCALATION] ${escalationType.toUpperCase()} - ${chatState.customer_name || 'Website Chat'}`,
+              body: `Escalation to ${teamMember.name} for ${escalationType}. Customer: ${chatState.customer_name || 'Unknown'} (${chatState.customer_email})`,
+              sentAt: new Date().toISOString(),
+            }, {
+              customerEmail: chatState.customer_email,
+              customerName: chatState.customer_name,
+              messageExcerpt: message_text.substring(0, 500),
+            });
+
             // Track escalations as array to support multiple types
             if (!chatState.escalations_sent) {
               chatState.escalations_sent = [];
@@ -1459,19 +1466,13 @@ SAY: "I'm connecting you with ${teamMember.name} now - they'll reach out to you 
         console.log('[JordanLee] Unhappy customer:', unhappyCheck.reason);
         
         try {
-          await supabase.from('conversation_events').insert({
-            conversation_id: conversationId,
-            organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf', // FIXED: Correct WPW org ID
-            event_type: 'escalation',
-            event_subtype: 'unhappy_customer',
-            actor: 'jordan_agent',
-            metadata: {
-              reason: unhappyCheck.reason,
-              trigger_message: message_text.substring(0, 500),
-              customer_email: chatState.customer_email || null,
-              needs_callback: true
-            }
-          });
+          await logConversationEvent(supabase, conversationId, 'escalation_sent', 'jordan_lee', {
+            reason: unhappyCheck.reason,
+            message_excerpt: message_text.substring(0, 500),
+            customer_email: chatState.customer_email || undefined,
+            priority: 'high',
+            metadata: { needs_callback: true },
+          }, 'unhappy_customer');
         } catch (e) {
           console.error('[JordanLee] Failed to log unhappy customer:', e);
         }
@@ -1629,172 +1630,48 @@ CRITICAL PRICING RULES:
           chatState.quoted_price = price;
           chatState.quote_sent = true;
           
-          // SAVE QUOTE via direct REST API call (uses anon key - works without service role)
-          const quoteNumber = 'WPW-CHAT-' + Date.now();
-          // Use Supabase env vars directly since this runs on WPW Supabase
+          // CREATE QUOTE via MightyCustomer pipeline (create-quote-from-chat)
+          // This handles: quote record + OS Spine events + email + Alex Morgan task + MightyMail enrollment
           const wpwUrl = Deno.env.get('SUPABASE_URL') || 'https://qxllysilzonrlyoaomce.supabase.co';
           const wpwAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
 
-          // Use only columns that exist in quotes table (no customer_phone)
-          const quotePayload = {
-            quote_number: quoteNumber,
-            organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
-            customer_name: chatState.customer_name || 'Website Chat Lead',
-            customer_email: chatState.customer_email,
-            vehicle_model: chatState.vehicle || vehicleDisplay,
-            vehicle_year: chatState.vehicle_year ? parseInt(chatState.vehicle_year) : null,
-            sqft: chatState.sqft || defaultSqft,
-            material_cost: price,
-            total_price: price,
-            status: 'sent',
-            source: 'website_chat',
-            ai_generated: true,
-            email_sent: false,
-            source_conversation_id: conversationId
-          };
-
           try {
-            // Try direct REST API insert
-            const insertResponse = await fetch(`${wpwUrl}/rest/v1/quotes`, {
+            const quoteResponse = await fetch(`${wpwUrl}/functions/v1/create-quote-from-chat`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'apikey': wpwAnonKey,
-                'Authorization': `Bearer ${wpwAnonKey}`,
-                'Prefer': 'return=representation'
+                'Authorization': `Bearer ${wpwAnonKey}`
               },
-              body: JSON.stringify(quotePayload)
+              body: JSON.stringify({
+                conversation_id: conversationId,
+                customer_email: chatState.customer_email,
+                customer_name: chatState.customer_name || 'Website Chat Lead',
+                customer_phone: chatState.customer_phone || null,
+                vehicle_year: chatState.vehicle_year || null,
+                vehicle_make: '',
+                vehicle_model: chatState.vehicle || vehicleDisplay,
+                sqft: chatState.sqft || defaultSqft,
+                total_price: price,
+                product_type: chatState.product_key || 'avery_wrap',
+                product_id: chatState.product_id || 79,
+                product_name: chatState.product_name || 'Avery MPI 1105 with DOL 1460Z',
+                product_price: chatState.product_price || 5.27,
+                send_email: true
+              })
             });
 
-            if (insertResponse.ok) {
-              const insertedQuote = await insertResponse.json();
-              console.log('[JordanLee] Quote saved via REST API:', insertedQuote[0]?.id || insertedQuote?.id);
-              chatState.quote_id = insertedQuote[0]?.id || insertedQuote?.id;
+            if (quoteResponse.ok) {
+              const quoteResult = await quoteResponse.json();
+              console.log('[JordanLee] Quote created via MightyCustomer pipeline:', quoteResult);
+              chatState.quote_id = quoteResult.quote_id;
               chatState.quote_created = true;
             } else {
-              const errorText = await insertResponse.text();
-              console.error('[JordanLee] REST API quote insert failed:', insertResponse.status, errorText);
-
-              // Fallback: try via edge function
-              const fallbackResponse = await fetch(`${wpwUrl}/functions/v1/create-quote-from-chat`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${wpwAnonKey}`
-                },
-                body: JSON.stringify({
-                  conversation_id: conversationId,
-                  customer_email: chatState.customer_email,
-                  customer_name: chatState.customer_name,
-                  customer_phone: chatState.customer_phone || null,
-                  vehicle_year: chatState.vehicle_year || null,
-                  vehicle_make: '',
-                  vehicle_model: chatState.vehicle || vehicleDisplay,
-                  sqft: chatState.sqft || defaultSqft,
-                  total_price: price,
-                  product_type: chatState.product_key || 'avery_wrap',
-                  product_id: chatState.product_id || 79,
-                  product_name: chatState.product_name || 'Avery MPI 1105 with DOL 1460Z',
-                  product_price: chatState.product_price || 5.27,
-                  send_email: true
-                })
-              });
-
-              if (fallbackResponse.ok) {
-                const fallbackResult = await fallbackResponse.json();
-                console.log('[JordanLee] Quote created via fallback edge function:', fallbackResult);
-                chatState.quote_id = fallbackResult.quote_id;
-                chatState.quote_created = true;
-              } else {
-                console.error('[JordanLee] Fallback also failed:', await fallbackResponse.text());
-              }
+              const errorText = await quoteResponse.text();
+              console.error('[JordanLee] create-quote-from-chat failed:', quoteResponse.status, errorText);
             }
           } catch (e) {
-            console.error('[JordanLee] Quote save error:', e);
-          }
-
-          // SEND EMAIL directly via Resend API (don't use create-quote-from-chat to avoid duplicate quote)
-          const resendKey = Deno.env.get('RESEND_API_KEY');
-          if (resendKey && chatState.customer_email && chatState.quote_id) {
-            try {
-              const vehicleLabel = `${chatState.vehicle_year || ''} ${chatState.vehicle || vehicleDisplay}`.trim();
-              const sqftValue = chatState.sqft || defaultSqft;
-              const cartUrl = 'https://weprintwraps.com/our-products/';
-
-              const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f6f7f9;font-family:Inter,Arial,sans-serif;">
-  <div style="max-width:640px;margin:0 auto;background:#ffffff;">
-    <div style="background:#000000;padding:16px 24px;">
-      <div style="font-size:16px;font-weight:600;color:#ffffff;">WePrintWraps.com Quote</div>
-    </div>
-    <div style="background:#ffffff;color:#111827;font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.5;">
-      <div style="padding:24px;">
-        <a href="${cartUrl}" style="display:inline-block;padding:12px 18px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">Add This Quote to Cart</a>
-      </div>
-      <div style="padding:0 24px 24px 24px;">
-        <div style="font-size:13px;color:#6b7280;">Estimated Total</div>
-        <div style="font-size:26px;font-weight:700;color:#111827;">$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        <div style="font-size:13px;color:#6b7280;">~${sqftValue} sq ft × $5.27 / sq ft</div>
-      </div>
-      <div style="padding:0 24px 24px 24px;">
-        <div style="font-size:13px;color:#111827;font-weight:600;margin-bottom:4px;">Project Details</div>
-        <div style="font-size:13px;color:#6b7280;">
-          <strong>Vehicle:</strong> ${vehicleLabel}<br/>
-          <strong>Coverage:</strong> ${sqftValue} sq ft<br/>
-          <strong>Material:</strong> Premium Cast Vinyl<br/>
-          <em style="color:#9ca3af;">Printed wrap material only. Installation not included.</em>
-        </div>
-      </div>
-      <div style="padding:24px;background:#f6f7f9;font-size:12px;color:#6b7280;text-align:center;">
-        Questions? Reply to this email or contact <a href="mailto:hello@weprintwraps.com" style="color:#2563eb;">hello@weprintwraps.com</a><br/><br/>
-        — The WePrintWraps.com Team
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-              const emailResponse = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${resendKey}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  from: 'WePrintWraps <hello@weprintwraps.com>',
-                  to: [chatState.customer_email],
-                  subject: `Your Wrap Quote: ${vehicleLabel} - $${price.toFixed(2)}`,
-                  html: emailHtml
-                })
-              });
-
-              if (emailResponse.ok) {
-                console.log('[JordanLee] Email sent directly via Resend');
-                // Update quote to mark email as sent
-                await fetch(`${wpwUrl}/rest/v1/quotes?id=eq.${chatState.quote_id}`, {
-                  method: 'PATCH',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'apikey': wpwAnonKey,
-                    'Authorization': `Bearer ${wpwAnonKey}`
-                  },
-                  body: JSON.stringify({ email_sent: true, status: 'sent' })
-                });
-              } else {
-                console.error('[JordanLee] Email send failed:', await emailResponse.text());
-              }
-            } catch (e) {
-              console.error('[JordanLee] Email error:', e);
-            }
-          } else {
-            console.log('[JordanLee] Skipping email - missing:', {
-              hasResendKey: !!resendKey,
-              hasEmail: !!chatState.customer_email,
-              hasQuoteId: !!chatState.quote_id
-            });
+            console.error('[JordanLee] Quote pipeline error:', e);
           }
         }
       }
@@ -1816,9 +1693,9 @@ Upload your design and checkout. Questions? I'm here!"`;
       else if (/\b(perf|perforated)\b/i.test(msg)) {
         contextNotes = `🪟 WINDOW PERF SELECTED
 
-Price: $5.32/sqft
+Price: $5.95/sqft
 
-SAY: "Window perf is $5.32/sqft!
+SAY: "Window perf is $5.95/sqft!
 
 **Order here:** https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/
 
@@ -2075,6 +1952,15 @@ Email: ${chatState.customer_email ? 'Captured' : 'Not captured'}` }
       console.error('[JordanLee] CRITICAL: Failed to save outbound message:', outboundMsgError);
     } else {
       console.log('[JordanLee] Outbound message saved for conversation:', conversationId);
+
+      // Log AI response event for analytics tracking
+      try {
+        await logConversationEvent(supabase, conversationId, 'ai_response_sent', 'jordan_lee', {
+          message_excerpt: aiReply.substring(0, 200),
+        });
+      } catch (e) {
+        console.error('[JordanLee] Failed to log ai_response_sent event:', e);
+      }
     }
 
     return new Response(JSON.stringify({

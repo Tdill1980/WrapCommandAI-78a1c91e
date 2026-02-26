@@ -81,7 +81,11 @@ export async function callEdgeFunction<T = any>(
   const url = `${WPW_FUNCTIONS_URL}/${functionName}`;
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': WPW_ANON_KEY,
+      'Authorization': `Bearer ${WPW_ANON_KEY}`,
+    },
     body: method === 'POST' ? JSON.stringify(body) : undefined,
   });
 
