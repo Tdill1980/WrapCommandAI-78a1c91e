@@ -11,6 +11,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MODEL = 'claude-sonnet-4-6';
+const ORG_ID = '031ac427-f078-4086-a9bc-7bdb78cc1c73'; // WePrintWraps
+
+// A human rep is only pinged when the customer asks for one (rush jobs / real issues)
+const OPERATOR_PHONE = '+14807726003'; // Jackson
+
+async function sendOperatorSMS(body: string): Promise<void> {
+  const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
+  const auth = Deno.env.get('TWILIO_AUTH_TOKEN');
+  const from = Deno.env.get('TWILIO_PHONE_NUMBER');
+  if (!sid || !auth || !from) {
+    console.error('[CommandChat] Twilio creds missing — skipping operator SMS');
+    return;
+  }
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${sid}:${auth}`),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ To: OPERATOR_PHONE, From: from, Body: body }),
+    });
+    if (!res.ok) {
+      console.error('[CommandChat] Operator SMS failed:', res.status, await res.text());
+    }
+  } catch (e) {
+    console.error('[CommandChat] Operator SMS exception:', e);
+  }
+}
+
 const TOOLS = [
   {
     name: "cmd_knowledge",
@@ -91,7 +122,7 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     console.log(`[CommandChat] Updating contact:`, JSON.stringify(input));
     if (context?.email && input.shop_name) {
       try {
-        const updateRes = await fetch(`${baseUrl}/rest/v1/command_contacts?email=eq.${encodeURIComponent(context.email.toLowerCase())}`, {
+        await fetch(`${baseUrl}/rest/v1/command_contacts?email=eq.${encodeURIComponent(context.email.toLowerCase())}`, {
           method: 'PATCH',
           headers: { 
             'apikey': key, 
@@ -114,7 +145,61 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
+  // cmd_quote -> route through submit-quote (the SAME tool the weprintwraps.com homepage uses)
+  // so chat quotes show up in RestylePro exactly like homepage quotes. Falls back to
+  // create-quote-from-chat if the homepage tool can't price it (e.g. vehicle not in its DB).
+  if (name === 'cmd_quote') {
+    const embedSecret = Deno.env.get('WPW_EMBED_SECRET') || '';
+    const material = (input.product_name || '').toLowerCase().includes('3m') ? '3M' : 'Avery';
+    const submitPayload: Record<string, unknown> = {
+      quote_id: crypto.randomUUID(),
+      email: input.customer_email,
+      name: input.customer_name || 'Website Chat',
+      phone: input.customer_phone || undefined,
+      vehicle: {
+        year: input.vehicle_year || undefined,
+        make: input.vehicle_make || undefined,
+        model: input.vehicle_model || undefined,
+      },
+      dimensions: { sqft: input.sqft },
+      material,
+      estimated_price: input.price,
+      source: 'website_chat',
+      notes: `Quote from website chat. Vehicle: ${input.vehicle || ''}`,
+    };
+    console.log(`[CommandChat] cmd_quote -> submit-quote:`, JSON.stringify(submitPayload));
+    try {
+      const sres = await fetch(`${baseUrl}/functions/v1/submit-quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'x-wpw-embed-secret': embedSecret,
+        },
+        body: JSON.stringify(submitPayload),
+      });
+      const sresult = await sres.json();
+      console.log(`[CommandChat] submit-quote result:`, JSON.stringify(sresult));
+      // If the homepage tool actually created/sent a quote, use it.
+      if (sres.ok && sresult.success && sresult.quote_number) {
+        return sresult;
+      }
+      console.warn('[CommandChat] submit-quote did not finalize (needs_review/unauthorized), falling back to create-quote-from-chat');
+    } catch (e) {
+      console.error('[CommandChat] submit-quote error, falling back:', e);
+    }
+    // Fallback so the customer always gets a quote
+    const fbRes = await fetch(`${baseUrl}/functions/v1/create-quote-from-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify(input),
+    });
+    const fbResult = await fbRes.json();
+    console.log(`[CommandChat] create-quote-from-chat (fallback) result:`, JSON.stringify(fbResult));
+    return fbResult;
+  }
+
+  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
   console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
   const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
     method: 'POST',
@@ -171,6 +256,7 @@ serve(async (req) => {
     let convId: string;
     let contactId: string | null = null;
     let state: any = {};
+    let isNewConversation = false;
 
     const convs = await dbQuery(url, key, 'conversations', `select=id,chat_state,contact_id&metadata->>session_id=eq.${session_id}`);
 
@@ -217,6 +303,7 @@ serve(async (req) => {
         });
       }
     } else {
+      isNewConversation = true;
       // Initialize state with all provided customer data
       state = {};
       if (customer_name) state.customer_name = customer_name;
@@ -242,7 +329,7 @@ serve(async (req) => {
 
       const newConv = await dbInsert(url, key, 'conversations', {
         channel: 'website', status: 'active',
-        organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
+        organization_id: ORG_ID,
         metadata,
         chat_state: state
       });
@@ -260,7 +347,7 @@ serve(async (req) => {
         } else {
           // Create new contact
           const newContact = await dbInsert(url, key, 'contacts', {
-            organization_id: '51aa96db-c06d-41ae-b3cb-25b045c75caf',
+            organization_id: ORG_ID,
             name: customer_name || 'Website Visitor',
             email: customer_email,
             phone: customer_phone || null,
@@ -307,15 +394,28 @@ serve(async (req) => {
       conversation_id: convId, channel: 'website', direction: 'inbound', content: message_text, created_at: now
     });
 
-    // Load history
-    const history = await dbQuery(url, key, 'messages', `conversation_id=eq.${convId}&select=direction,content&order=created_at&limit=10`);
-    const msgs = (history || []).map((m: any) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.content }));
-    msgs.push({ role: 'user', content: message_text });
+    // Load history (the inbound message we just saved is already included)
+    const history = await dbQuery(url, key, 'messages', `conversation_id=eq.${convId}&select=direction,content&order=created_at&limit=12`);
+    let msgs = (history || [])
+      .filter((m: any) => m.content && m.content.trim())
+      .map((m: any) => ({ role: m.direction === 'inbound' ? 'user' : 'assistant', content: m.content }));
+    // Anthropic requires the first turn to be a user message — drop any leading greeting/assistant turns
+    while (msgs.length && msgs[0].role !== 'user') msgs.shift();
+    // History already contains the current message; only append if it's somehow missing
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== 'user' || last.content !== message_text) {
+      msgs.push({ role: 'user', content: message_text });
+    }
 
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
-    const prompt = `You are Jordan, customer service at WePrintWraps.com — PRINT SHOP ONLY (no installation).
+    const prompt = `You are a member of the WePrintWraps team (weprintwraps.com) — we are a PRINT SHOP ONLY (no installation).
 
 YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
+
+IDENTITY:
+- You're a real WePrintWraps team member helping over chat. Speak as "we"/"us" (the WPW team).
+- Do NOT use a personal name or claim to be a specific person. If asked your name, say you're part of the WePrintWraps team.
+- Never say you're an AI, a bot, or an assistant.
 
 VOICE RULES (STRICT):
 - Casual and short, like texting a coworker
@@ -324,7 +424,7 @@ VOICE RULES (STRICT):
 - NO asterisks or bold formatting
 - NO markdown formatting
 - Plain text only
-- Sound like a person, not a bot
+- Sound like a real person, not a bot
 
 CUSTOMER STATE:
 - Name: ${state.customer_name || 'NOT PROVIDED'}
@@ -414,17 +514,26 @@ FLEET/BULK DISCOUNTS (mention when multiple vehicles or high sqft):
 - 2500+ sqft: 20% off
 If customer mentions fleet, multiple vehicles, or total sqft hits these tiers, calculate and show the discount. Upsell: "Add another vehicle and you'd hit the 10% tier"
 
+REP REQUESTS / RUSH JOBS / REAL ISSUES:
+- If the customer asks to talk to a rep, wants a callback, has a rush/urgent job, or has a real problem (damage, mistake, complaint), call cmd_escalate right away (support for callback/rush, quality for complaints/damage).
+- Then confirm warmly in plain text, e.g. "Got it — I've flagged this for a rep and someone will reach out shortly. Anything I can help with in the meantime?"
+- Keep helping them in chat while they wait; don't go silent.
+
 WE PRINT AND SHIP ONLY - NO INSTALLATION EVER.
 Contact: hello@weprintwraps.com`;
 
     let reply = "Hey! How can I help?";
+    let escalatedThisTurn: string | null = null;
     let res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 1024, system: prompt, tools: TOOLS, messages: msgs })
+      body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: msgs })
     });
 
     let ai = await res.json();
+    if (!res.ok || ai.type === 'error') {
+      console.error('[CommandChat] Anthropic API error:', res.status, JSON.stringify(ai));
+    }
 
     // Tool execution loop
     while (ai.stop_reason === 'tool_use') {
@@ -441,6 +550,10 @@ Contact: hello@weprintwraps.com`;
           if (!c.input.customer_phone && state.customer_phone) c.input.customer_phone = state.customer_phone;
           if (!c.input.vehicle && state.vehicle) c.input.vehicle = state.vehicle;
           if (!c.input.sqft && state.sqft) c.input.sqft = state.sqft;
+          // Structured vehicle for the homepage quote tool (submit-quote)
+          if (state.vehicle_year) c.input.vehicle_year = state.vehicle_year;
+          if (state.vehicle_make) c.input.vehicle_make = state.vehicle_make;
+          if (state.vehicle_model) c.input.vehicle_model = state.vehicle_model;
         }
 
         // Pass customer info to escalation
@@ -464,6 +577,10 @@ Contact: hello@weprintwraps.com`;
           state.sqft = r.sqft;
           state.sqftWithRoof = r.sqft_with_roof;
           state.roof = r.roof;
+          // Keep the structured make/model/year so the homepage quote tool can re-price authoritatively
+          if (c.input.year) state.vehicle_year = c.input.year;
+          if (c.input.make) state.vehicle_make = c.input.make;
+          if (c.input.model) state.vehicle_model = c.input.model;
         }
         if (c.name === 'cmd_pricing' && r.prices) {
           state.calculated_price = r.prices.default;
@@ -478,6 +595,7 @@ Contact: hello@weprintwraps.com`;
           if (!state.escalations_sent) state.escalations_sent = [];
           state.escalations_sent.push(r.escalation_type);
           state.last_escalation = r.escalation_type;
+          escalatedThisTurn = r.escalation_type || c.input.escalation_type;
           console.log('[CommandChat] Escalated to:', r.routed_to);
         }
 
@@ -487,13 +605,23 @@ Contact: hello@weprintwraps.com`;
       res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 1024, system: prompt, tools: TOOLS, messages: [...msgs, { role: 'assistant', content: ai.content }, { role: 'user', content: results }] })
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: [...msgs, { role: 'assistant', content: ai.content }, { role: 'user', content: results }] })
       });
       ai = await res.json();
+      if (!res.ok || ai.type === 'error') {
+        console.error('[CommandChat] Anthropic API error (tool loop):', res.status, JSON.stringify(ai));
+        break;
+      }
     }
 
     const txt = ai.content?.find((b: any) => b.type === 'text');
-    if (txt) reply = txt.text;
+    if (txt && txt.text?.trim()) {
+      reply = txt.text;
+    } else {
+      // No text came back (usually an upstream API error) — give a helpful fallback, not silence
+      console.error('[CommandChat] No text in AI response, last stop_reason:', ai?.stop_reason, 'err:', ai?.error?.message);
+      reply = "Sorry, I hit a snag on my end — mind sending that again? Or email hello@weprintwraps.com and we'll jump right on it.";
+    }
 
     // Generate synopsis
     const replyTime = new Date().toISOString();
@@ -524,9 +652,25 @@ Contact: hello@weprintwraps.com`;
       channel: 'website',
       direction: 'outbound',
       content: reply,
-      sender_name: 'Jordan Lee',
+      sender_name: 'WPW Team',
       created_at: replyTime
     });
+
+    // The AI handles every chat. A human is only pinged when the customer explicitly
+    // asks for a rep (the "Talk to a rep" button / rush jobs / real issues) -> cmd_escalate.
+    try {
+      if (escalatedThisTurn) {
+        const shortSession = String(session_id).substring(0, 6);
+        await sendOperatorSMS(
+          `WPW CHAT - REP REQUESTED [${shortSession}] (${escalatedThisTurn})\n` +
+          `${state.customer_name || 'Customer'} (${state.customer_email || 'no email'}${state.customer_phone ? ', ' + state.customer_phone : ''})\n` +
+          `Said: "${message_text}"\n` +
+          `Open WrapCommandAI to follow up.`
+        );
+      }
+    } catch (smsErr) {
+      console.error('[CommandChat] Operator notify failed:', smsErr);
+    }
 
     return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
