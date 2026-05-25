@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
 
       let q = supabase
         .from("quotes")
-        .select("id, quote_number, customer_name, customer_email, customer_phone, vehicle_year, vehicle_make, vehicle_model, sqft, product_name, total_price, status, source, created_at, converted_to_order, is_paid");
+        .select("id, quote_number, customer_name, customer_email, vehicle_year, vehicle_make, vehicle_model, sqft, total_price, price, price_per_sqft, material, status, source, email_sent, ai_generated, source_conversation_id, conversation_id, metadata, created_at, updated_at");
 
       if (since) q = q.gte("created_at", since);
 
@@ -196,7 +196,17 @@ Deno.serve(async (req) => {
         .limit(limit);
 
       if (error) return json({ error: error.message }, 500);
-      return json({ count: (quotes || []).length, quotes: quotes || [] });
+
+      // status text drives conversion: 'converted'/'completed'/'paid' => converted
+      const out = (quotes || []).map((row: any) => {
+        const st = (row.status || "").toLowerCase();
+        return {
+          ...row,
+          customer_phone: row.metadata?.customer_phone || null,
+          is_converted: ["converted", "completed", "paid", "won"].includes(st),
+        };
+      });
+      return json({ count: out.length, quotes: out });
     }
 
     return json({ error: `Unknown resource '${resource}'. Use: health, conversations, transcript, quotes.` }, 400);

@@ -145,61 +145,10 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  // cmd_quote -> route through submit-quote (the SAME tool the weprintwraps.com homepage uses)
-  // so chat quotes show up in RestylePro exactly like homepage quotes. Falls back to
-  // create-quote-from-chat if the homepage tool can't price it (e.g. vehicle not in its DB).
-  if (name === 'cmd_quote') {
-    const embedSecret = Deno.env.get('WPW_EMBED_SECRET') || '';
-    const material = (input.product_name || '').toLowerCase().includes('3m') ? '3M' : 'Avery';
-    const submitPayload: Record<string, unknown> = {
-      quote_id: crypto.randomUUID(),
-      email: input.customer_email,
-      name: input.customer_name || 'Website Chat',
-      phone: input.customer_phone || undefined,
-      vehicle: {
-        year: input.vehicle_year || undefined,
-        make: input.vehicle_make || undefined,
-        model: input.vehicle_model || undefined,
-      },
-      dimensions: { sqft: input.sqft },
-      material,
-      estimated_price: input.price,
-      source: 'website_chat',
-      notes: `Quote from website chat. Vehicle: ${input.vehicle || ''}`,
-    };
-    console.log(`[CommandChat] cmd_quote -> submit-quote:`, JSON.stringify(submitPayload));
-    try {
-      const sres = await fetch(`${baseUrl}/functions/v1/submit-quote`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          'x-wpw-embed-secret': embedSecret,
-        },
-        body: JSON.stringify(submitPayload),
-      });
-      const sresult = await sres.json();
-      console.log(`[CommandChat] submit-quote result:`, JSON.stringify(sresult));
-      // If the homepage tool actually created/sent a quote, use it.
-      if (sres.ok && sresult.success && sresult.quote_number) {
-        return sresult;
-      }
-      console.warn('[CommandChat] submit-quote did not finalize (needs_review/unauthorized), falling back to create-quote-from-chat');
-    } catch (e) {
-      console.error('[CommandChat] submit-quote error, falling back:', e);
-    }
-    // Fallback so the customer always gets a quote
-    const fbRes = await fetch(`${baseUrl}/functions/v1/create-quote-from-chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify(input),
-    });
-    const fbResult = await fbRes.json();
-    console.log(`[CommandChat] create-quote-from-chat (fallback) result:`, JSON.stringify(fbResult));
-    return fbResult;
-  }
-
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
+  // cmd_quote -> create-quote-from-chat ("Wren"): the real WPW quote tool.
+  // It saves the quote with the correct schema, emails the customer (Resend),
+  // and logs to ai_actions. We pass the structured vehicle the agent looked up.
+  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
   console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
   const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
     method: 'POST',
