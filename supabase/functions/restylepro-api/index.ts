@@ -251,7 +251,51 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ error: `Unknown resource '${resource}'. Use: health, conversations, transcript, quotes, stats.` }, 400);
+    // ---------------- RETARGETING (MightyMail funnel) ----------------
+    if (resource === "retargeting") {
+      const limit = clampLimit(u.searchParams.get("limit"), 100, 500);
+      const since = u.searchParams.get("since");
+      let q = supabase
+        .from("quotes")
+        .select("id, quote_number, customer_name, customer_email, vehicle_year, vehicle_make, vehicle_model, sqft, total_price, price, status, source, converted_to_order, conversion_revenue, followup_count, last_followup_at, retarget_opt_out, metadata, created_at");
+      if (since) q = q.gte("created_at", since);
+      const { data: rows, error } = await q.order("created_at", { ascending: false }).limit(limit);
+      if (error) return json({ error: error.message }, 500);
+
+      const out = (rows || []).map((r: any) => {
+        const fc = Number(r.followup_count || 0);
+        const inFunnel = !r.converted_to_order && !r.retarget_opt_out && fc < 3;
+        return {
+          id: r.id,
+          quote_number: r.quote_number,
+          customer_name: r.customer_name,
+          customer_email: r.customer_email,
+          customer_phone: r.metadata?.customer_phone || null,
+          vehicle: [r.vehicle_year, r.vehicle_make, r.vehicle_model].filter(Boolean).join(" ") || null,
+          sqft: r.sqft,
+          quoted_value: r.total_price ?? r.price ?? null,
+          source: r.source,
+          status: r.status,
+          emails_sent: fc,
+          last_followup_at: r.last_followup_at,
+          next_step: inFunnel ? fc + 1 : null,
+          in_funnel: inFunnel,
+          is_converted: !!r.converted_to_order,
+          conversion_revenue: r.conversion_revenue ?? null,
+          opted_out: !!r.retarget_opt_out,
+          created_at: r.created_at,
+        };
+      });
+      const summary = {
+        total: out.length,
+        in_funnel: out.filter((r) => r.in_funnel).length,
+        converted: out.filter((r) => r.is_converted).length,
+        emails_sent: out.reduce((a, r) => a + r.emails_sent, 0),
+      };
+      return json({ summary, retargeting: out });
+    }
+
+    return json({ error: `Unknown resource '${resource}'. Use: health, conversations, transcript, quotes, stats, retargeting.` }, 400);
   } catch (err) {
     console.error("[restylepro-api] Error:", err);
     return json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
