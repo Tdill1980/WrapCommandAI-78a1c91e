@@ -31,7 +31,8 @@
     mode: scriptTag?.getAttribute('data-mode') || 'live',
     theme: scriptTag?.getAttribute('data-theme') || 'dark-pro',
     // Edge functions on YOUR Supabase (qxllysilzonrlyoaomce)
-    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/website-chat',
+    // command-chat = the real AI agent (WPW Team). website-chat was the old SMS-relay (deprecated).
+    apiUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/command-chat',
     statusUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-agent-status',
     artworkCheckUrl: 'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/check-artwork-file',
     // YOUR Supabase anon key
@@ -70,11 +71,12 @@
   // WPW Logo
   const WPW_LOGO = 'https://weprintwraps.com/cdn/shop/files/WePrintWraps-Logo-White.png?v=1690318107';
 
-  // QUICK ACTIONS — 3 buttons
+  // QUICK ACTIONS — 4 buttons
   const quickActions = [
     { id: 'quote', text: 'How much is my wrap project?', icon: '🚗', primary: true, message: 'How much is my wrap project?' },
     { id: 'order', text: 'Check my order status', icon: '📦', message: 'I need to check on my order status' },
-    { id: 'restyle', text: 'Ask about RestyleProAI', icon: '🎨', message: 'Tell me about RestyleProAI and how it can help visualize my wrap' }
+    { id: 'restyle', text: 'Ask about RestyleProAI', icon: '🎨', message: 'Tell me about RestyleProAI and how it can help visualize my wrap' },
+    { id: 'rep', text: 'Talk to a rep (rush job / issue)', icon: '🙋', message: 'I have a rush job or a real issue and would like a rep to contact me as soon as possible.' }
   ];
 
   // Geo data
