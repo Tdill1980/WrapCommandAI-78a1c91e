@@ -209,7 +209,49 @@ Deno.serve(async (req) => {
       return json({ count: out.length, quotes: out });
     }
 
-    return json({ error: `Unknown resource '${resource}'. Use: health, conversations, transcript, quotes.` }, 400);
+    // ---------------- STATS (conversion funnel) ----------------
+    if (resource === "stats") {
+      const since = u.searchParams.get("since"); // optional ISO; default all-time
+      let q = supabase
+        .from("quotes")
+        .select("source, status, total_price, price, converted_to_order, conversion_revenue, followup_count, created_at");
+      if (since) q = q.gte("created_at", since);
+      const { data: rows, error } = await q.limit(5000);
+      if (error) return json({ error: error.message }, 500);
+
+      const bySource: Record<string, { quotes: number; converted: number; quoted_value: number; converted_revenue: number }> = {};
+      let totalQuotes = 0, converted = 0, quotedValue = 0, convertedRevenue = 0, followupsSent = 0;
+      for (const r of rows || []) {
+        const src = r.source || "unknown";
+        bySource[src] ||= { quotes: 0, converted: 0, quoted_value: 0, converted_revenue: 0 };
+        const value = Number(r.total_price ?? r.price ?? 0);
+        const isConv = !!r.converted_to_order;
+        totalQuotes++; quotedValue += value;
+        bySource[src].quotes++; bySource[src].quoted_value += value;
+        followupsSent += Number(r.followup_count || 0);
+        if (isConv) {
+          converted++; convertedRevenue += Number(r.conversion_revenue ?? value ?? 0);
+          bySource[src].converted++; bySource[src].converted_revenue += Number(r.conversion_revenue ?? value ?? 0);
+        }
+      }
+      const round = (n: number) => Math.round(n * 100) / 100;
+      for (const s of Object.values(bySource)) { s.quoted_value = round(s.quoted_value); s.converted_revenue = round(s.converted_revenue); }
+
+      return json({
+        since: since || "all_time",
+        totals: {
+          quotes: totalQuotes,
+          converted,
+          conversion_rate: totalQuotes ? round((converted / totalQuotes) * 100) : 0,
+          quoted_value: round(quotedValue),
+          converted_revenue: round(convertedRevenue),
+          retargeting_emails_sent: followupsSent,
+        },
+        by_source: bySource,
+      });
+    }
+
+    return json({ error: `Unknown resource '${resource}'. Use: health, conversations, transcript, quotes, stats.` }, 400);
   } catch (err) {
     console.error("[restylepro-api] Error:", err);
     return json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
