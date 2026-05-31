@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { createCreativeWithTags, saveBlueprintSnapshot, updateCreative, type Creative, type FormatSlug } from "@/lib/creativeVault";
 import { validateAndNormalizeBlueprint, type SceneBlueprintV1 } from "@/lib/blueprints";

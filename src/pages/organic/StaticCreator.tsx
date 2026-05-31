@@ -24,7 +24,7 @@ import {
   Check,
 } from "lucide-react";
 import { ContentMetadataPanel, useContentMetadata } from "@/components/content/ContentMetadataPanel";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { downloadToDevice, copyToClipboard, generateFilename } from "@/lib/downloadUtils";
 import { StyleReferenceUpload, type ExtractedStyle } from "@/components/static-creator/StyleReferenceUpload";

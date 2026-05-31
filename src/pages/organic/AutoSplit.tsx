@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   ArrowLeft,
