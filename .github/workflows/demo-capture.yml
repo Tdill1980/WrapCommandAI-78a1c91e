@@ -1,0 +1,69 @@
+name: Demo Capture (Playwright)
+
+# Records a high-resolution screen demo of the app and uploads the result
+# (video + click-coordinate track for auto-zoom) to Supabase storage.
+#
+# Trigger manually from the Actions tab, or via the GitHub API (workflow_dispatch)
+# from an edge function so the app can kick off a recording.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   DEMO_BASE_URL              e.g. https://app.restylepro.ai
+#   DEMO_USERNAME              test/demo account (do NOT use a real admin)
+#   DEMO_PASSWORD
+#   SUPABASE_URL               https://qxllysilzonrlyoaomce.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  service role (storage upload)
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipe:
+        description: "Recipe file under demo-capture/recipes (without .json)"
+        required: true
+        default: "restyle-color-change"
+      mode:
+        description: "record | discover"
+        required: true
+        default: "record"
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo-capture
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run capture
+        env:
+          DEMO_BASE_URL: ${{ secrets.DEMO_BASE_URL }}
+          DEMO_USERNAME: ${{ secrets.DEMO_USERNAME }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RECIPE: ${{ github.event.inputs.recipe }}
+          MODE: ${{ github.event.inputs.mode }}
+        run: |
+          if [ "$MODE" = "discover" ]; then
+            node --loader tsx discover.ts
+          else
+            node --loader tsx recorder.ts
+          fi
+
+      - name: Upload artifacts (fallback / inspection)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-${{ github.event.inputs.recipe }}
+          path: demo-capture/out/
+          if-no-files-found: ignore

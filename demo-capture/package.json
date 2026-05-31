@@ -1,0 +1,16 @@
+{
+  "name": "wrapcommand-demo-capture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright-based high-res screen recorder for AI-produced SaaS demo videos. Records the real app deterministically and logs click coordinates so the renderer can auto-zoom to the action.",
+  "scripts": {
+    "discover": "node --loader tsx discover.ts",
+    "record": "node --loader tsx recorder.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "playwright": "^1.48.0",
+    "tsx": "^4.19.0"
+  }
+}

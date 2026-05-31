@@ -1,0 +1,20 @@
+{
+  "name": "restyle-color-change",
+  "description": "Demo: upload a vehicle photo into ReStyle Pro and AI-paint it a new finish. PLACEHOLDER selectors -- run the discovery pass first (MODE=discover) and replace the TODO selectors with real ones from out/elements.json.",
+  "login": {
+    "path": "/login",
+    "userSelector": "input[type=\"email\"]",
+    "passSelector": "input[type=\"password\"]",
+    "submitSelector": "button[type=\"submit\"]",
+    "waitForSelector": "TODO: a selector that only appears once logged in (e.g. [data-testid=\"dashboard\"])"
+  },
+  "steps": [
+    { "action": "goto", "path": "/restyle", "scene": "intro" },
+    { "action": "waitForSelector", "selector": "TODO: upload dropzone selector", "scene": "intro", "zoom": 1.5, "note": "zoom to the upload area" },
+    { "action": "click", "selector": "TODO: upload button", "scene": "upload", "zoom": 1.7 },
+    { "action": "fill", "selector": "TODO: prompt/finish input", "value": "matte black", "scene": "prompt", "zoom": 1.8, "note": "type the finish" },
+    { "action": "click", "selector": "TODO: generate button", "scene": "generate", "zoom": 1.7 },
+    { "action": "waitForSelector", "selector": "TODO: result image", "ms": 60000, "scene": "reveal", "zoom": 1.4, "note": "hold on the reveal" },
+    { "action": "wait", "ms": 2000, "scene": "reveal" }
+  ]
+}
