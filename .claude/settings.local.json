@@ -17,7 +17,8 @@
       "Bash(do curl -s -X POST \"https://qxllysilzonrlyoaomce.supabase.co/functions/v1/sync-woo-manual\" -H \"Content-Type: application/json\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM\" -d '{\"\"target\"\": \"\"both\"\", \"\"days\"\": 14}')",
       "Bash(done)",
       "Bash(for i in {1..15})",
-      "Bash(do echo \"Batch $i:\")"
+      "Bash(do echo \"Batch $i:\")",
+      "mcp__bbc2c9b1-52d8-49d9-aaa6-1b21497414c4__get_file_metadata"
     ]
   }
 }
