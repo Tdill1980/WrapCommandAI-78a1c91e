@@ -145,69 +145,11 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  // cmd_quote -> submit-quote: the PROVEN homepage quote tool (used by the RestylePro
-  // homepage form). It does the authoritative sqft lookup, prices the wrap, and emails
-  // the customer a polished quote via Resend (plus retargeting + CommercialPro routing).
-  // We then stamp the conversation + org onto the quote row so it links back to the
-  // transcript and shows in the admin Website-Chat Quotes panel.
-  if (name === 'cmd_quote') {
-    const embedSecret = Deno.env.get('WPW_EMBED_SECRET') || '';
-    const quoteId = (globalThis as any).crypto?.randomUUID?.() ?? `wpw-chat-${Date.now()}`;
-    const payload: any = {
-      quote_id: quoteId,
-      email: input.customer_email,
-      name: input.customer_name || null,
-      phone: input.customer_phone || null,
-      vehicle: {
-        year: input.vehicle_year != null ? String(input.vehicle_year) : undefined,
-        make: input.vehicle_make || undefined,
-        model: input.vehicle_model || undefined,
-      },
-      material: input.product_name && /3m/i.test(input.product_name) ? '3M' : 'Avery',
-      source: 'website_chat',
-      notes: input.vehicle ? `Website chat quote for ${input.vehicle}` : undefined,
-    };
-    console.log('[CommandChat] cmd_quote -> submit-quote:', JSON.stringify(payload));
-    const sqRes = await fetch(`${baseUrl}/functions/v1/submit-quote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-wpw-embed-secret': embedSecret },
-      body: JSON.stringify(payload),
-    });
-    const sq = await sqRes.json().catch(() => ({}));
-    console.log('[CommandChat] submit-quote result:', sqRes.status, JSON.stringify(sq));
-
-    if (!sqRes.ok || sq?.success === false) {
-      return { success: false, error: sq?.error || `submit-quote failed (${sqRes.status})` };
-    }
-    // Vehicle not in the pricing DB -> submit-quote does NOT email. Don't claim success.
-    if (sq?.needs_review) {
-      return { success: false, needs_review: true, message: sq?.message || 'This one needs a quick manual pricing review.' };
-    }
-
-    // Link the new quote to this conversation + the real WePrintWraps org
-    try {
-      await fetch(`${baseUrl}/rest/v1/quotes?id=eq.${sq.quote_id}`, {
-        method: 'PATCH',
-        headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-        body: JSON.stringify({
-          source_conversation_id: input.conversation_id || null,
-          organization_id: input.organization_id || null,
-        }),
-      });
-    } catch (e) {
-      console.error('[CommandChat] quote link patch failed:', e);
-    }
-
-    return {
-      success: true,
-      quote_number: sq.quote_number,
-      material_cost: sq.price ?? sq.estimated_price ?? null,
-      price: sq.price ?? sq.estimated_price ?? null,
-      email_sent: !!sq.emailSent,
-    };
-  }
-
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
+  // cmd_quote -> create-quote-from-chat: the WPW chat quote tool. It saves the quote with
+  // the correct schema, EMAILS the customer the quote via Resend, logs ai_actions, and (now)
+  // honors the sqft/price the chat already quoted, files under the real WePrintWraps org, and
+  // merges chat_state instead of wiping it.
+  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
   console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
   const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
     method: 'POST',
