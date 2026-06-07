@@ -174,7 +174,14 @@ serve(async (req) => {
       product_name: passedProductName,
       product_price = 5.27,
       send_email = true,
-      organization_id = '51aa96db-c06d-41ae-b3cb-25b045c75caf',
+      // WePrintWraps — the ONLY real organization. (The old default 51aa96db... does not
+      // exist in the organizations table, so quotes filed under it were orphaned: invisible
+      // to revenue reporting and follow-up tasks.)
+      organization_id = '031ac427-f078-4086-a9bc-7bdb78cc1c73',
+      // Optional overrides so the emailed quote matches exactly what the chat already quoted
+      sqft: sqftOverride,
+      price: priceOverride,
+      total_price: totalPriceOverride,
       test_mode = false
     } = await req.json();
 
@@ -238,21 +245,30 @@ serve(async (req) => {
     const resendKey = Deno.env.get('RESEND_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Calculate SQFT and pricing - NEVER BLOCK, always create quote
+    // Calculate SQFT and pricing - NEVER BLOCK, always create quote.
+    // If the chat already determined sqft (via cmd_vehicle), honor it so the emailed
+    // quote matches what the customer was told in the chat — don't silently recompute.
     const sqftResult = getVehicleSqft(vehicle_make || '', vehicle_model || '');
-    const sqft = sqftResult.sqft;
-    const needsReview = sqftResult.needsReview;
-    
+    const hasSqftOverride = sqftOverride != null && Number(sqftOverride) > 0;
+    const sqft = hasSqftOverride ? Number(sqftOverride) : sqftResult.sqft;
+    const needsReview = hasSqftOverride ? false : sqftResult.needsReview;
+
     console.log('[CreateQuoteFromChat] SQFT lookup:', {
       vehicle: `${vehicle_year} ${vehicle_make} ${vehicle_model}`,
       sqft,
-      source: sqftResult.source,
+      source: hasSqftOverride ? 'chat_override' : sqftResult.source,
       needsReview
     });
-    
+
     // Use passed product price or default to $5.27
     const pricePerSqft = product_price || 5.27;
-    const materialCost = Math.round(sqft * pricePerSqft * 100) / 100;
+    // Honor a price the chat already quoted; otherwise compute sqft × rate.
+    const priceFromChat = (priceOverride != null && Number(priceOverride) > 0)
+      ? Number(priceOverride)
+      : (totalPriceOverride != null && Number(totalPriceOverride) > 0)
+        ? Number(totalPriceOverride)
+        : null;
+    const materialCost = priceFromChat ?? Math.round(sqft * pricePerSqft * 100) / 100;
     const quoteNumber = generateQuoteNumber();
 
     // Use passed product name or derive from product_type
@@ -324,17 +340,29 @@ serve(async (req) => {
       console.log('[CreateQuoteFromChat] quote_drafted event logged');
     }
 
-    // Update conversation with quote info
+    // Update conversation with quote info.
+    // MERGE into existing chat_state — never replace it, or we'd wipe the customer's
+    // name/email/vehicle/sqft that the chat collected earlier in the conversation.
     if (conversation_id) {
+      const { data: convRow } = await supabase
+        .from('conversations')
+        .select('chat_state')
+        .eq('id', conversation_id)
+        .single();
+
+      const mergedState = {
+        ...(convRow?.chat_state || {}),
+        quote_id: quote.id,
+        quote_number: quoteNumber,
+        quoted_price: materialCost,
+        quote_sent: true,
+        quote_sent_at: new Date().toISOString()
+      };
+
       await supabase
         .from('conversations')
         .update({
-          chat_state: {
-            quote_id: quote.id,
-            quote_number: quoteNumber,
-            quote_sent: true,
-            quote_sent_at: new Date().toISOString()
-          },
+          chat_state: mergedState,
           status: 'quote_sent'
         })
         .eq('id', conversation_id);

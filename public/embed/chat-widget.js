@@ -1372,6 +1372,12 @@
       const agentReply = data.reply || data.response || data.message;
       if (agentReply) {
         await addMessage(agentReply, false, true);
+        // Backend-confirmed quote receipt — only shows when a quote was actually emailed
+        if (data.quote_sent && data.quote_email) {
+          const amount = data.quote_amount ? ' ($' + Number(data.quote_amount).toLocaleString() + ')' : '';
+          const ref = data.quote_number ? ' [' + data.quote_number + ']' : '';
+          addMessage('✅ Quote emailed to ' + data.quote_email + amount + ref, false);
+        }
       } else if (data.error) {
         // Edge function returned an error but might have a fallback reply
         addMessage("I hit a small snag — could you try that again? Or email us at hello@weprintwraps.com and we'll get right back to you!", false);

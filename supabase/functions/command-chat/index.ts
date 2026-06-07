@@ -77,8 +77,8 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   },
   {
     name: "cmd_quote",
-    description: "Create quote and send email. Use ONLY after: name + email + phone + vehicle/product + price are ALL confirmed.",
-    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_name", "customer_email", "vehicle", "sqft", "price"] }
+    description: "Create the quote and EMAIL it to the customer. Call this as soon as you have their email plus a vehicle and a price — do NOT wait for a phone number. Ask for phone and shop name AFTER the quote is sent.",
+    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_email", "vehicle", "sqft", "price"] }
   },
   {
     name: "cmd_order",
@@ -145,10 +145,69 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  // cmd_quote -> create-quote-from-chat ("Wren"): the real WPW quote tool.
-  // It saves the quote with the correct schema, emails the customer (Resend),
-  // and logs to ai_actions. We pass the structured vehicle the agent looked up.
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
+  // cmd_quote -> submit-quote: the PROVEN homepage quote tool (used by the RestylePro
+  // homepage form). It does the authoritative sqft lookup, prices the wrap, and emails
+  // the customer a polished quote via Resend (plus retargeting + CommercialPro routing).
+  // We then stamp the conversation + org onto the quote row so it links back to the
+  // transcript and shows in the admin Website-Chat Quotes panel.
+  if (name === 'cmd_quote') {
+    const embedSecret = Deno.env.get('WPW_EMBED_SECRET') || '';
+    const quoteId = (globalThis as any).crypto?.randomUUID?.() ?? `wpw-chat-${Date.now()}`;
+    const payload: any = {
+      quote_id: quoteId,
+      email: input.customer_email,
+      name: input.customer_name || null,
+      phone: input.customer_phone || null,
+      vehicle: {
+        year: input.vehicle_year != null ? String(input.vehicle_year) : undefined,
+        make: input.vehicle_make || undefined,
+        model: input.vehicle_model || undefined,
+      },
+      material: input.product_name && /3m/i.test(input.product_name) ? '3M' : 'Avery',
+      source: 'website_chat',
+      notes: input.vehicle ? `Website chat quote for ${input.vehicle}` : undefined,
+    };
+    console.log('[CommandChat] cmd_quote -> submit-quote:', JSON.stringify(payload));
+    const sqRes = await fetch(`${baseUrl}/functions/v1/submit-quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-wpw-embed-secret': embedSecret },
+      body: JSON.stringify(payload),
+    });
+    const sq = await sqRes.json().catch(() => ({}));
+    console.log('[CommandChat] submit-quote result:', sqRes.status, JSON.stringify(sq));
+
+    if (!sqRes.ok || sq?.success === false) {
+      return { success: false, error: sq?.error || `submit-quote failed (${sqRes.status})` };
+    }
+    // Vehicle not in the pricing DB -> submit-quote does NOT email. Don't claim success.
+    if (sq?.needs_review) {
+      return { success: false, needs_review: true, message: sq?.message || 'This one needs a quick manual pricing review.' };
+    }
+
+    // Link the new quote to this conversation + the real WePrintWraps org
+    try {
+      await fetch(`${baseUrl}/rest/v1/quotes?id=eq.${sq.quote_id}`, {
+        method: 'PATCH',
+        headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({
+          source_conversation_id: input.conversation_id || null,
+          organization_id: input.organization_id || null,
+        }),
+      });
+    } catch (e) {
+      console.error('[CommandChat] quote link patch failed:', e);
+    }
+
+    return {
+      success: true,
+      quote_number: sq.quote_number,
+      material_cost: sq.price ?? sq.estimated_price ?? null,
+      price: sq.price ?? sq.estimated_price ?? null,
+      email_sent: !!sq.emailSent,
+    };
+  }
+
+  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
   console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
   const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
     method: 'POST',
@@ -359,7 +418,7 @@ serve(async (req) => {
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
     const prompt = `You are a member of the WePrintWraps team (weprintwraps.com) — we are a PRINT SHOP ONLY (no installation).
 
-YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
+YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally. Answer fast and directly from what you already know; only use a tool when you actually need a vehicle sqft, a calculated price, an order lookup, or to send a quote.
 
 IDENTITY:
 - You're a real WePrintWraps team member helping over chat. Speak as "we"/"us" (the WPW team).
@@ -435,17 +494,16 @@ VEHICLE RULE (CRITICAL):
 - If the customer mentions a new vehicle, use cmd_vehicle to look it up and update
 
 PRICING FLOW:
-1. Customer mentions vehicle -> use cmd_vehicle to get sqft
+1. Customer mentions a vehicle -> get the YEAR, make, and model (the quote email needs all three), then use cmd_vehicle to get sqft
 2. After getting sqft -> use cmd_pricing to calculate
 3. Give price + relevant order URL in same message
-4. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+4. Offer to email the quote: "Want me to email you this quote so you've got it on file?"
+5. As soon as you have their email + vehicle + price -> use cmd_quote to save and EMAIL it. Do NOT wait for a phone number.
 
-CONTACT COLLECTION (GET ALL 4):
-- If name is NOT PROVIDED, ask for it naturally
-- If email is NOT PROVIDED, ask for it
-- If phone is "Not provided", ask: "What's the best number to reach you?"
-- Get all 3 before sending the quote
-- AFTER quote sent, ask: "By the way, what's your shop name?" (if not already known)
+CONTACT COLLECTION:
+- Email is the priority — once you have a price, ask for their email so you can send the quote
+- The moment you have email + vehicle + price, call cmd_quote (it emails them automatically)
+- AFTER the quote is sent, THEN collect the rest: "What's the best number to reach you?" and "What's your shop name?" (if not already known)
 - Shop name helps us serve wrap shops better and offer trade pricing
 
 PRICING RULES:
@@ -473,6 +531,7 @@ Contact: hello@weprintwraps.com`;
 
     let reply = "Hey! How can I help?";
     let escalatedThisTurn: string | null = null;
+    let quoteSentThisTurn: { email: string; quote_number: string; amount: number; sent_at: string } | null = null;
     let res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
@@ -493,6 +552,8 @@ Contact: hello@weprintwraps.com`;
         // FIX: Pass all customer info to cmd_quote
         if (c.name === 'cmd_quote') {
           c.input.conversation_id = convId;
+          // Quotes, follow-up tasks and revenue must land in the real WePrintWraps org
+          c.input.organization_id = ORG_ID;
           // Ensure we pass stored customer info if not in the call
           if (!c.input.customer_name && state.customer_name) c.input.customer_name = state.customer_name;
           if (!c.input.customer_email && state.customer_email) c.input.customer_email = state.customer_email;
@@ -536,9 +597,17 @@ Contact: hello@weprintwraps.com`;
           state.calculated_price_with_roof = r.prices.with_roof;
         }
         if (c.name === 'cmd_quote' && r.success) {
+          // create-quote-from-chat returns material_cost (not price) — map it correctly
+          const quoteAmount = r.material_cost ?? r.total_price ?? r.price ?? c.input.price ?? 0;
           state.quote_sent = true;
-          state.quoted_price = r.price;
+          state.quoted_price = quoteAmount;
           state.quote_number = r.quote_number;
+          quoteSentThisTurn = {
+            email: c.input.customer_email || state.customer_email || '',
+            quote_number: r.quote_number || '',
+            amount: quoteAmount,
+            sent_at: new Date().toISOString(),
+          };
         }
         if (c.name === 'cmd_escalate' && r.success) {
           if (!state.escalations_sent) state.escalations_sent = [];
@@ -572,24 +641,11 @@ Contact: hello@weprintwraps.com`;
       reply = "Sorry, I hit a snag on my end — mind sending that again? Or email hello@weprintwraps.com and we'll jump right on it.";
     }
 
-    // Generate synopsis
     const replyTime = new Date().toISOString();
-    try {
-      const synopsisResult = await execTool('cmd_synopsis', {
-        message: message_text,
-        vehicle: state.vehicle || null,
-        sqft: state.sqft || null,
-        price: state.calculated_price || state.quoted_price || null,
-        email_captured: !!state.customer_email
-      }, url, key);
-      if (synopsisResult.synopsis) {
-        state.ai_summary = synopsisResult.synopsis;
-      }
-    } catch (e) {
-      console.log('[CommandChat] Synopsis generation failed:', e);
-    }
 
-    // Save updated state with timestamp
+    // Persist state + the outbound reply IMMEDIATELY so the customer is never kept waiting.
+    // The internal synopsis is generated in the background below (it used to add a full
+    // extra AI round-trip to every reply — that was the "delay" customers felt).
     console.log('[CommandChat] Saving state:', JSON.stringify(state));
     await dbUpdate(url, key, 'conversations', `id=eq.${convId}`, {
       chat_state: state,
@@ -604,6 +660,28 @@ Contact: hello@weprintwraps.com`;
       sender_name: 'WPW Team',
       created_at: replyTime
     });
+
+    // Fire-and-forget: build the admin synopsis AFTER replying so it never delays the customer.
+    const synopsisTask = (async () => {
+      try {
+        const synopsisResult = await execTool('cmd_synopsis', {
+          message: message_text,
+          vehicle: state.vehicle || null,
+          sqft: state.sqft || null,
+          price: state.calculated_price || state.quoted_price || null,
+          email_captured: !!state.customer_email
+        }, url, key);
+        if (synopsisResult?.synopsis) {
+          await dbUpdate(url, key, 'conversations', `id=eq.${convId}`, {
+            chat_state: { ...state, ai_summary: synopsisResult.synopsis }
+          });
+        }
+      } catch (e) {
+        console.log('[CommandChat] Synopsis generation failed:', e);
+      }
+    })();
+    // Keep the worker alive to finish the background task without blocking the response.
+    try { (globalThis as any).EdgeRuntime?.waitUntil?.(synopsisTask); } catch (_) { /* local dev: just let it run */ }
 
     // The AI handles every chat. A human is only pinged when the customer explicitly
     // asks for a rep (the "Talk to a rep" button / rush jobs / real issues) -> cmd_escalate.
@@ -621,7 +699,18 @@ Contact: hello@weprintwraps.com`;
       console.error('[CommandChat] Operator notify failed:', smsErr);
     }
 
-    return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId }), {
+    return new Response(JSON.stringify({
+      success: true,
+      reply,
+      response: reply,
+      conversation_id: convId,
+      // Surface a backend-confirmed "quote sent" receipt so the chat widget can show it
+      quote_sent: !!quoteSentThisTurn,
+      quote_email: quoteSentThisTurn?.email || null,
+      quote_number: quoteSentThisTurn?.quote_number || null,
+      quote_amount: quoteSentThisTurn?.amount ?? null,
+      quote_sent_at: quoteSentThisTurn?.sent_at || null,
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
