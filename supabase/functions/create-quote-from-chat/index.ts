@@ -172,7 +172,7 @@ serve(async (req) => {
       product_type = 'avery_wrap',
       product_id = 79,
       product_name: passedProductName,
-      product_price = 5.27,
+      product_price = 5.25,
       send_email = true,
       // WePrintWraps — the ONLY real organization. (The old default 51aa96db... does not
       // exist in the organizations table, so quotes filed under it were orphaned: invisible
@@ -260,8 +260,9 @@ serve(async (req) => {
       needsReview
     });
 
-    // Use passed product price or default to $5.27
-    const pricePerSqft = product_price || 5.27;
+    // Use passed product price or default to $5.25 (Avery). 3M is $6.00 — the chat passes
+    // the exact per-sqft price it quoted, so the emailed total always matches the conversation.
+    const pricePerSqft = product_price || 5.25;
     // Honor a price the chat already quoted; otherwise compute sqft × rate.
     const priceFromChat = (priceOverride != null && Number(priceOverride) > 0)
       ? Number(priceOverride)

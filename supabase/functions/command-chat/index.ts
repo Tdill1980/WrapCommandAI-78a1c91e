@@ -56,7 +56,7 @@ const TOOLS = [
   {
     name: "cmd_pricing",
     description: `Calculate price for any WPW product. Products:
-VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.32), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
+VEHICLE WRAPS (per sqft): avery_wrap ($5.25), 3m_wrap ($6.00), window_perf ($5.32), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
 DESIGN (flat): custom_design ($750), design_hour ($95), file_output ($95)
@@ -449,7 +449,7 @@ CONTACT COLLECTION:
 - Shop name helps us serve wrap shops better and offer trade pricing
 
 PRICING RULES:
-- Avery and 3M wraps are BOTH $5.27/sqft (same price)
+- Avery wrap is $5.25/sqft; 3M wrap is $6.00/sqft
 - Window perf: $5.32/sqft
 - Cut contour Avery: $6.32/sqft, 3M: $6.92/sqft
 - Always state sqft and whether roof is included or excluded
