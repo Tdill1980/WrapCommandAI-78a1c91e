@@ -412,3 +412,6 @@ verify_jwt = false
 
 [functions.bulk-sync-orders]
 verify_jwt = false
+
+[functions.seo-engine]
+verify_jwt = false
