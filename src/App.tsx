@@ -30,6 +30,7 @@ import WrapOfTheWeek from "./pages/WrapOfTheWeek";
 import DesignShop from "./pages/DesignShop";
 import ClubWPWAdmin from "./pages/ClubWPWAdmin";
 import WPWDashboard from "./pages/WPWDashboard";
+import SEOEngine from "./pages/SEOEngine";
 import WPWCustomerDashboard from "./pages/WPWCustomerDashboard";
 import WPWAccountPage from "./pages/WPWAccountPage";
 import ApproveFlow from "./pages/ApproveFlow";
@@ -246,6 +247,7 @@ const App = () => (
             <Route path="/admin/clubwpw" element={<ClubWPWAdmin />} />
             <Route path="/clubwpw-admin" element={<ClubWPWAdmin />} />
             <Route path="/wpw-dashboard" element={<WPWDashboard />} />
+            <Route path="/seo-engine" element={<SEOEngine />} />
             <Route path="/my-wpw" element={<WPWAccountPage />} />
             <Route path="/my-account" element={<WPWAccountPage />} />
             <Route path="/wpw-account" element={<WPWAccountPage />} />
