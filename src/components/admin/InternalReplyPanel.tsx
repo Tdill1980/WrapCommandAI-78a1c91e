@@ -87,8 +87,9 @@ export function InternalReplyPanel({
 
       const { data, error } = await lovableFunctions.functions.invoke('agent-chat', {
         body: {
-          agent: selectedAgent === 'jordan' ? 'jordan_lee' : 'alex_morgan',
-          prompt: `${agentPersonality}
+          action: 'quick',
+          agent_id: selectedAgent === 'jordan' ? 'jordan_lee' : 'alex_morgan',
+          message: `${agentPersonality}
 
 You are helping an admin reply to a customer. The admin is asking for your advice.
 
@@ -136,8 +137,9 @@ Provide helpful, concise advice. If they ask you to rephrase or write something,
 
       const { data, error } = await lovableFunctions.functions.invoke('agent-chat', {
         body: {
-          agent: 'alex_morgan',
-          prompt: `You are drafting a professional follow-up email to a customer. 
+          action: 'quick',
+          agent_id: 'alex_morgan',
+          message: `You are drafting a professional follow-up email to a customer.
 
 Customer Name: ${customerName || 'Valued Customer'}
 Customer Email: ${customerEmail}
