@@ -109,6 +109,22 @@ export const AVAILABLE_AGENTS: AgentOption[] = [
     icon: Camera,
     color: "text-teal-500 bg-teal-500/10 hover:bg-teal-500/20",
   },
+  {
+    id: "harper_quinn",
+    name: "Harper Quinn",
+    role: "Inbox & Email Concierge",
+    inbox: "All inboxes • Drafts & answers email",
+    icon: Mail,
+    color: "text-sky-500 bg-sky-500/10 hover:bg-sky-500/20",
+  },
+  {
+    id: "dana_cole",
+    name: "Dana Cole",
+    role: "Enterprise Accounts & Outreach",
+    inbox: "Enterprise pipeline • Outbound",
+    icon: Megaphone,
+    color: "text-violet-500 bg-violet-500/10 hover:bg-violet-500/20",
+  },
 ];
 
 interface AgentSelectorProps {
