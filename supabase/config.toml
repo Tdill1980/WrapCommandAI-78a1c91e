@@ -415,3 +415,23 @@ verify_jwt = false
 
 [functions.seo-engine]
 verify_jwt = false
+
+# Meta / Instagram auth chain — must be verify_jwt = false so the gateway
+# doesn't reject the OAuth callback with a stale JWT before the code runs
+[functions.meta-oauth-config]
+verify_jwt = false
+
+[functions.meta-oauth-exchange]
+verify_jwt = false
+
+[functions.refresh-instagram-token]
+verify_jwt = false
+
+[functions.exchange-instagram-token]
+verify_jwt = false
+
+[functions.facebook-auth]
+verify_jwt = false
+
+[functions.backfill-instagram-profiles]
+verify_jwt = false
