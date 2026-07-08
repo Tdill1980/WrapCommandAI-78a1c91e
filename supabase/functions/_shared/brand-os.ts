@@ -89,7 +89,27 @@ NEVER SAY: AI, software, platform, SaaS, prompt, render, visualization, subscrip
 CTA STYLE: "Book your free consultation", "Get a free quote", "Visit our shop", "DM us", "Call today".
 HASHTAGS: #vehiclewrap #carwrap #colorchange #fleetwrap #wrapshop #vinylwrap #weprintwraps #wrapped #wraplife #carculture`;
 
+export const WRAPTV_BRAND_BLOCK = `Brand: WrapTV World (wraptvworld.com)
+WHAT THEY ARE: The wrap industry's entertainment & culture platform. Not a shop,
+not a SaaS — a media brand. Wrap culture, creator spotlights, viral builds,
+behind-the-scenes shop life.
+TONE: Hype, bold, automotive-lifestyle, creator-focused. High energy, fast
+pacing, meme-aware. Fan-first, community-first.
+AUDIENCE: Car enthusiasts, installers, wrap culture fans, creators.
+CONTENT STYLE: Fast cuts, trends, POV, reveals, transformations, reactions.
+Entertainment value first — the wrap is the star, the story is the hook.
+GOAL: Reach, virality, culture. Build the audience the other brands convert.
+NEVER: Direct sales pitches, B2B wholesale messaging, software demos, SaaS
+language, long educational lectures. WrapTV entertains; RestyleProAI and
+WePrintWraps sell.
+CTA STYLE: "Follow for more", "Tag someone who needs this", "Which one would
+you pick?", "Full build on the channel".
+HASHTAGS: #wraptv #wraptvworld #wraplife #carculture #vehiclewrap #wrapped
+#carsofinstagram #automotivedaily`;
+
 /** Resolve the brand context block for a generator's prompt. */
 export function getBrandBlock(brand: string): string {
-  return brand === "WePrintWraps" ? WEPRINTWRAPS_BRAND_BLOCK : RESTYLEPRO_BRAND_BLOCK;
+  if (brand === "WePrintWraps") return WEPRINTWRAPS_BRAND_BLOCK;
+  if (brand === "WrapTV" || brand === "wraptv") return WRAPTV_BRAND_BLOCK;
+  return RESTYLEPRO_BRAND_BLOCK;
 }
