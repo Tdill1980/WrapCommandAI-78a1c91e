@@ -1,0 +1,17 @@
+{
+  "name": "reel-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted ffmpeg reel renderer (replaces Creatomate)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

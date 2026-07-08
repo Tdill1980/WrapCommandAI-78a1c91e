@@ -63,6 +63,7 @@ import { downloadToDevice } from "@/lib/downloadUtils";
 import { sanitizeForJson } from "@/lib/sanitizeForJson";
 import { createCreativeWithTags, saveBlueprintSnapshot, updateCreative, replaceStatusTag, SourceType } from "@/lib/creativeVault";
 import { finalizeRender } from "@/lib/finalizeRender";
+import { REEL_RENDER_FN } from "@/lib/featureFlags";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -1012,9 +1013,11 @@ export default function ReelBuilder() {
       });
       await replaceStatusTag(creative.id, 'rendering');
 
-      // ============ CALL RENDER-REEL WITH BLUEPRINT ============
-      // This is the new blueprint-based render API
-      const { data, error } = await lovableFunctions.functions.invoke('render-reel', {
+      // ============ CALL THE RENDER FUNCTION WITH BLUEPRINT ============
+      // REEL_RENDER_FN selects the engine: 'render-reel-ffmpeg' (self-hosted,
+      // VITE_REEL_RENDERER=ffmpeg) or the legacy 'render-reel' (Creatomate).
+      // Both share the same request/response contract.
+      const { data, error } = await lovableFunctions.functions.invoke(REEL_RENDER_FN, {
         body: {
           job_id: queueEntry.id,
           blueprint: sceneBlueprint,
