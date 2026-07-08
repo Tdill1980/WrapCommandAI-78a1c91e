@@ -415,3 +415,6 @@ verify_jwt = false
 
 [functions.seo-engine]
 verify_jwt = false
+
+[functions.sync-draft-to-restylepro]
+verify_jwt = false

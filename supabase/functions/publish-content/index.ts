@@ -21,7 +21,10 @@ serve(async (req) => {
   }
 
   try {
-    const { content_draft_id, action, caller_agent } = await req.json();
+    // Read the body ONCE — req.json() consumes the stream, so the reject/
+    // schedule handlers must destructure from this object, not re-read it.
+    const body = await req.json();
+    const { content_draft_id, action, caller_agent } = body;
 
     // Initialize Supabase
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -83,7 +86,7 @@ serve(async (req) => {
     }
 
     if (action === "reject") {
-      const { reason } = await req.json();
+      const { reason } = body;
       
       const { error: updateError } = await supabase
         .from("content_drafts")
@@ -105,7 +108,7 @@ serve(async (req) => {
     }
 
     if (action === "schedule") {
-      const { scheduled_for } = await req.json();
+      const { scheduled_for } = body;
       
       const { error: updateError } = await supabase
         .from("content_drafts")
