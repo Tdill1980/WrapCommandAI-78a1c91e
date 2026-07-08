@@ -249,15 +249,18 @@ export async function selectMediaForIntent(
   console.log('[SelectionEngine] Starting selection with intent:', intent);
   
   // Step 1: Get all video assets for the organization
-  // CRITICAL: Only select from 'raw' source footage
-  // Never select from ai_output or inspo_reference
+  // Select real source footage: exclude AI outputs and inspo references, and
+  // require a playable file_url (the ffmpeg renderer downloads it directly).
+  // Do NOT require mux_playback_id or a strict 'raw' category — that hid every
+  // uploaded/imported clip that was never ingested into Mux or wasn't tagged 'raw'.
   const { data: allAssets, error: assetError } = await contentDB
     .from('content_files')
     .select('id, file_url, mux_playback_id, duration_seconds, brand, content_category')
     .eq('organization_id', organizationId)
     .eq('file_type', 'video')
-    .eq('content_category', 'raw')  // ONLY source footage
-    .not('mux_playback_id', 'is', null);
+    .neq('content_category', 'ai_output')
+    .neq('content_category', 'inspo_reference')
+    .not('file_url', 'is', null);
   
   if (assetError) {
     console.error('[SelectionEngine] Failed to fetch assets:', assetError);

@@ -725,12 +725,15 @@ Return JSON ONLY:
     }
 
     // Step 3: Fetch videos from media library (with visual_tags, excluding inspo)
+    // Require a playable file_url (the ffmpeg renderer downloads clipUrl directly).
+    // Do NOT require mux_playback_id — Mux is not part of the ffmpeg reel path, and
+    // requiring it hid every library clip that was never ingested into Mux.
     let query = supabase
       .from("content_files")
       .select("id, file_url, original_filename, duration_seconds, tags, content_category, thumbnail_url, created_at, visual_tags, mux_playback_id")
       .eq("file_type", "video")
       .neq("content_category", "inspo_reference")
-      .not("mux_playback_id", "is", null)
+      .not("file_url", "is", null)
       .order("created_at", { ascending: false })
       .limit(max_videos || 50);
 
