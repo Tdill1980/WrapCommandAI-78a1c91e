@@ -1,0 +1,109 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: "Comma-separated function names (empty = auto-detect from diff)"
+        required: false
+        default: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed functions
+        id: changed
+        run: |
+          INPUT_FUNCTIONS="${{ github.event.inputs.functions }}"
+          if [ -n "$INPUT_FUNCTIONS" ]; then
+            FUNCTIONS=$(echo "$INPUT_FUNCTIONS" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$')
+            echo "functions<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$FUNCTIONS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "shared_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD -- supabase/functions/ || echo "")
+            FUNCTIONS=$(echo "$CHANGED_FILES" \
+              | grep '^supabase/functions/' \
+              | sed 's|supabase/functions/||' \
+              | cut -d'/' -f1 | sort -u \
+              | grep -v '^_shared$' | grep -v '^$' || true)
+            SHARED_CHANGED="false"
+            if echo "$CHANGED_FILES" | grep -q '_shared'; then SHARED_CHANGED="true"; fi
+            echo "shared_changed=$SHARED_CHANGED" >> "$GITHUB_OUTPUT"
+            if [ -z "$FUNCTIONS" ]; then
+              echo "functions=" >> "$GITHUB_OUTPUT"
+            else
+              echo "functions<<EOF" >> "$GITHUB_OUTPUT"
+              echo "$FUNCTIONS" >> "$GITHUB_OUTPUT"
+              echo "EOF" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          echo "Functions to deploy:"; echo "$FUNCTIONS"
+
+      - name: Setup Supabase CLI
+        if: steps.changed.outputs.functions != '' || steps.changed.outputs.shared_changed == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy functions (changed only)
+        if: steps.changed.outputs.functions != '' && steps.changed.outputs.shared_changed != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          PROJECT_REF="qxllysilzonrlyoaomce"
+          FUNCTIONS="${{ steps.changed.outputs.functions }}"
+          FAILED=""; DEPLOYED=0
+          while IFS= read -r fn; do
+            [ -z "$fn" ] && continue
+            JWT_FLAG=""
+            if grep -A1 "\[functions\.${fn}\]" supabase/config.toml 2>/dev/null | grep -q "verify_jwt = false"; then
+              JWT_FLAG="--no-verify-jwt"
+            fi
+            echo "::group::Deploying $fn $JWT_FLAG"
+            if supabase functions deploy "$fn" $JWT_FLAG --project-ref "$PROJECT_REF"; then
+              echo "✅ Deployed $fn"; DEPLOYED=$((DEPLOYED + 1))
+            else
+              echo "::error::Failed to deploy $fn"; FAILED="$FAILED $fn"
+            fi
+            echo "::endgroup::"
+          done <<< "$FUNCTIONS"
+          echo "✅ Deployed $DEPLOYED function(s)"
+          if [ -n "$FAILED" ]; then echo "::error::❌ Failed:$FAILED"; exit 1; fi
+
+      - name: Deploy ALL functions (_shared changed)
+        if: steps.changed.outputs.shared_changed == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          PROJECT_REF="qxllysilzonrlyoaomce"
+          echo "⚠️ Shared code changed — deploying ALL functions"
+          FAILED=""; DEPLOYED=0
+          for dir in supabase/functions/*/; do
+            fn=$(basename "$dir")
+            [ "$fn" = "_shared" ] && continue
+            JWT_FLAG=""
+            if grep -A1 "\[functions\.${fn}\]" supabase/config.toml 2>/dev/null | grep -q "verify_jwt = false"; then
+              JWT_FLAG="--no-verify-jwt"
+            fi
+            echo "::group::Deploying $fn $JWT_FLAG"
+            if supabase functions deploy "$fn" $JWT_FLAG --project-ref "$PROJECT_REF"; then
+              echo "✅ Deployed $fn"; DEPLOYED=$((DEPLOYED + 1))
+            else
+              echo "::error::Failed to deploy $fn"; FAILED="$FAILED $fn"
+            fi
+            echo "::endgroup::"
+          done
+          echo "✅ Deployed $DEPLOYED function(s)"
+          if [ -n "$FAILED" ]; then echo "::error::❌ Failed:$FAILED"; exit 1; fi
