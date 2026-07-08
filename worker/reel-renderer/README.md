@@ -19,7 +19,25 @@ in seconds, so the render feels synchronous and ReelBuilder gets
 `{ ok, final_url }` exactly like before. Longer renders return `processing`
 and the worker still fills `final_render_url` when done.
 
-## Deploy on Railway
+## Default host: GitHub Actions (no server, no Railway)
+
+The `render-reels` workflow (`.github/workflows/render-reels.yml`) runs this
+worker in **run-once mode** (`RUN_ONCE=1`) on GitHub's ubuntu runners, which
+have ffmpeg. It drains the `reel_render_jobs` queue and exits.
+
+- **Triggers:** every 5 min (schedule), manual (`workflow_dispatch`), and
+  instant (`repository_dispatch: render-reel`) when the edge function is given
+  a dispatch PAT.
+- **Required repo secrets:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+- **Latency:** with just the schedule, a reel renders within ~5 min. For
+  instant renders, set the edge-function secrets `GH_DISPATCH_TOKEN` (a
+  fine-grained PAT with Actions: write on this repo) and `GH_DISPATCH_REPO`
+  (`Tdill1980/WrapCommandAI-78a1c91e`) — the edge function then fires the
+  workflow the moment a job is enqueued.
+
+That's the whole host. The Railway path below is optional/alternative.
+
+## (Optional) Deploy on Railway
 
 1. New Railway service → **Deploy from repo subdirectory** `worker/reel-renderer`
    (it has its own Dockerfile; ffmpeg + fonts are installed in the image).

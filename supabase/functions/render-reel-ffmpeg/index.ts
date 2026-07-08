@@ -80,6 +80,29 @@ serve(async (req) => {
       .eq("id", job_id);
 
     // 3. best-effort kick
+    // Render host: GitHub Actions (render-reels workflow) by default. If a
+    // dispatch PAT is configured, fire an instant repository_dispatch so the
+    // render starts within seconds; otherwise the workflow's 5-min schedule
+    // picks the job up. A Railway worker (RENDER_WORKER_URL) is also supported.
+    const ghToken = Deno.env.get("GH_DISPATCH_TOKEN");
+    const ghRepo = Deno.env.get("GH_DISPATCH_REPO"); // e.g. "Tdill1980/WrapCommandAI-78a1c91e"
+    if (ghToken && ghRepo) {
+      try {
+        await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${ghToken}`,
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "render-reel-ffmpeg",
+          },
+          body: JSON.stringify({ event_type: "render-reel", client_payload: { job_id: renderJobId } }),
+        });
+      } catch (_) {
+        // the scheduled workflow will still pick it up
+      }
+    }
+
     const workerUrl = Deno.env.get("RENDER_WORKER_URL");
     if (workerUrl) {
       try {
