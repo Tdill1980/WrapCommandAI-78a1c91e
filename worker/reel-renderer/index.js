@@ -280,6 +280,16 @@ async function drain() {
   }
 }
 
+// ── run-once mode (GitHub Actions) ───────────────────────────────────────────
+// `RUN_ONCE=1 node index.js` (or `node index.js --once`) drains the queue and
+// exits — no HTTP server, no poll loop. This is how the render-reels GitHub
+// Actions workflow renders on a schedule/dispatch without a hosted worker.
+if (process.env.RUN_ONCE === "1" || process.argv.includes("--once")) {
+  drain()
+    .then(() => { console.log("[reel-renderer] run-once complete"); process.exit(0); })
+    .catch((e) => { console.error("[reel-renderer] run-once error", e); process.exit(1); });
+} else {
+
 // ── http server (health + kick) ──────────────────────────────────────────────
 http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -301,3 +311,5 @@ http.createServer((req, res) => {
 
 // polling fallback
 setInterval(() => { drain().catch((e) => console.error("[reel-renderer] drain error", e)); }, POLL_MS);
+
+} // end long-running mode

@@ -1,0 +1,54 @@
+# render-reels — self-hosted ffmpeg reel renderer on GitHub Actions.
+# Replaces Creatomate AND the need for a Railway host. GitHub's ubuntu runners
+# have ffmpeg; this job drains the reel_render_jobs queue once and exits.
+#
+# Triggers:
+#   - schedule: every 5 min (reliable fallback; GitHub's cron minimum)
+#   - workflow_dispatch: render now (manual, or dispatched by me via MCP)
+#   - repository_dispatch (event_type: render-reel): instant trigger from the
+#     render-reel-ffmpeg edge function IF a dispatch PAT is configured (optional)
+#
+# Required repo secrets:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+name: Render Reels
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [render-reel]
+
+# Never run two render passes at once (they'd both claim jobs).
+concurrency:
+  group: render-reels
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure ffmpeg + fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          ffmpeg -version | head -1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install worker deps
+        working-directory: worker/reel-renderer
+        run: npm install --omit=dev
+
+      - name: Render queued reels (drain once)
+        working-directory: worker/reel-renderer
+        env:
+          RUN_ONCE: "1"
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RENDER_BUCKET: media-library
+        run: node index.js
