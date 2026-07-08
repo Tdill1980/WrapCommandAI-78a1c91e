@@ -49,13 +49,19 @@ Then flip the app to the ffmpeg renderer:
 
 Leave them unset to keep using the old Creatomate `render-reel` while you test.
 
-## v1 scope & next step
+## What it renders
 
-v1 renders a **single-clip** reel: first scene trimmed → scaled + center-cropped
-to 1080×1920 → scene text + captions + end card burned in → music with
-fade-out. Multi-scene concat is the next step — build one segment per scene the
-same way, concat with the ffmpeg concat demuxer, then apply captions/music (see
-the comment in `renderReel()`).
+Full **multi-scene** reels:
+- Each blueprint scene → trimmed, scaled + center-cropped to 1080×1920, with
+  its per-scene text burned in, encoded to an identical-params segment.
+- Segments concatenated with the ffmpeg concat demuxer.
+- Optional end card appended as its own solid segment.
+- Timeline captions (absolute reel time, spanning scenes) + background music
+  with fade-out applied in a final pass.
+
+Single-clip reels are just the N=1 case — same code path. Audio from source
+clips is dropped in favor of the music track (segments are encoded `-an` so the
+concat is clean).
 
 ## Local smoke test
 
