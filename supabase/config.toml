@@ -421,3 +421,21 @@ verify_jwt = false
 
 [functions.render-reel-ffmpeg]
 verify_jwt = false
+
+[functions.meta-oauth-config]
+verify_jwt = false
+
+[functions.meta-oauth-exchange]
+verify_jwt = false
+
+[functions.refresh-instagram-token]
+verify_jwt = false
+
+[functions.exchange-instagram-token]
+verify_jwt = false
+
+[functions.facebook-auth]
+verify_jwt = false
+
+[functions.backfill-instagram-profiles]
+verify_jwt = false
