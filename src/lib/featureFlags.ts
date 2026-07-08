@@ -18,3 +18,14 @@ export const AUTHORIZED_CREATION_PATHS = [
   '/organic/reel-builder',
   '/mighty-edit',
 ] as const;
+
+/**
+ * Reel render engine selector.
+ * - 'ffmpeg'  → self-hosted worker (render-reel-ffmpeg edge fn) — no vendor.
+ * - anything else / unset → legacy Creatomate (render-reel).
+ * Set VITE_REEL_RENDERER=ffmpeg in the Vercel env to switch the frontend.
+ */
+export const REEL_RENDER_FN =
+  (import.meta as any).env?.VITE_REEL_RENDERER === "ffmpeg"
+    ? "render-reel-ffmpeg"
+    : "render-reel";

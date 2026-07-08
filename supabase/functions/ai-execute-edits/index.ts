@@ -326,7 +326,12 @@ serve(async (req) => {
           approved_overlays: approvedOverlays?.length || 0,
         }));
         
-        const renderRes = await supabase.functions.invoke("render-reel", {
+        // REEL_RENDERER=ffmpeg → self-hosted renderer; else legacy Creatomate.
+        // Same request/response contract either way.
+        const reelRenderFn = Deno.env.get("REEL_RENDERER") === "ffmpeg"
+          ? "render-reel-ffmpeg"
+          : "render-reel";
+        const renderRes = await supabase.functions.invoke(reelRenderFn, {
           body: {
             job_id: video_edit_id,
             blueprint,
