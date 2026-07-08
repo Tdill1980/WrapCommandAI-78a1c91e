@@ -1,0 +1,105 @@
+name: Deploy Supabase Migrations
+
+# Applies pending SQL migrations in supabase/migrations/ to the linked
+# project via the Supabase Management API. Uses the same
+# SUPABASE_ACCESS_TOKEN that powers deploy-edge-functions, so no new
+# secrets are required.
+#
+# Detection strategy: query supabase_migrations.schema_migrations for
+# the list of versions already applied, then apply every local
+# migration whose filename version prefix (the leading digits before the
+# first underscore) is missing. This is the same table the Supabase CLI
+# writes to, so hand-applied + CLI-applied migrations stay in sync.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - ".github/workflows/deploy-migrations.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply pending migrations via Management API
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: qxllysilzonrlyoaomce
+        run: |
+          set -euo pipefail
+          API="https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query"
+
+          # POST a SQL payload to the Management API "run query" endpoint.
+          # Echoes the JSON response body on success; logs a GH-Actions
+          # error and returns non-zero on non-2xx responses.
+          run_sql() {
+            local sql="$1"
+            local body
+            body=$(jq -cn --arg q "$sql" '{query: $q}')
+            local raw
+            raw=$(curl -sS -w $'\n%{http_code}' -X POST "$API" \
+              -H "Authorization: Bearer ${TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$body")
+            local code
+            code=$(printf '%s' "$raw" | tail -n1)
+            local out
+            out=$(printf '%s' "$raw" | sed '$d')
+            if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+              # stderr, not stdout — callers redirect stdout to /dev/null,
+              # which used to swallow this message entirely.
+              echo "::error::Management API HTTP $code: $out" >&2
+              return 1
+            fi
+            printf '%s' "$out"
+          }
+
+          echo "::group::Query schema_migrations"
+          APPLIED_JSON=$(run_sql "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version")
+          APPLIED=$(echo "$APPLIED_JSON" | jq -r '.[].version' | sort -u)
+          echo "$APPLIED" | sed 's/^/  /'
+          echo "::endgroup::"
+
+          PENDING=()
+          for f in $(ls supabase/migrations/*.sql 2>/dev/null | sort); do
+            bn=$(basename "$f")
+            version=${bn%%_*}
+            # Only consider files whose prefix is pure digits — matches
+            # the Supabase CLI's own versioning rules.
+            if ! [[ "$version" =~ ^[0-9]+$ ]]; then
+              continue
+            fi
+            if echo "$APPLIED" | grep -Fxq "$version"; then
+              continue
+            fi
+            PENDING+=("$f")
+          done
+
+          if [ ${#PENDING[@]} -eq 0 ]; then
+            echo "✅ No pending migrations"
+            exit 0
+          fi
+
+          echo "Pending migrations:"
+          printf '  - %s\n' "${PENDING[@]}"
+
+          for f in "${PENDING[@]}"; do
+            bn=$(basename "$f")
+            version=${bn%%_*}
+            rest=${bn#*_}
+            name=${rest%.sql}
+            esc_name=$(printf '%s' "$name" | sed "s/'/''/g")
+
+            echo "::group::Applying $bn"
+            SQL=$(cat "$f")
+            run_sql "$SQL" >/dev/null
+            run_sql "INSERT INTO supabase_migrations.schema_migrations (version, name, statements) VALUES ('$version', '$esc_name', ARRAY[]::text[]) ON CONFLICT (version) DO NOTHING" >/dev/null
+            echo "✅ Applied $bn"
+            echo "::endgroup::"
+          done
+
+          echo "✅ Applied ${#PENDING[@]} migration(s)"
