@@ -61,23 +61,13 @@ serve(async (req) => {
   let supabase: any = null;
 
   try {
-    // Validate Mux credentials first
+    // Mux is OPTIONAL — the reel renders via the ffmpeg worker (render-reel-ffmpeg),
+    // which needs no Mux. Mux is only used for the OPTIONAL shorts branch. Do NOT
+    // hard-fail when it's missing, or the working reel path is blocked.
     const MUX_TOKEN_ID = Deno.env.get("MUX_TOKEN_ID");
     const MUX_TOKEN_SECRET = Deno.env.get("MUX_TOKEN_SECRET");
-    
-    console.log("[ai-execute-edits] MUX_TOKEN_ID present:", !!MUX_TOKEN_ID);
-    console.log("[ai-execute-edits] MUX_TOKEN_SECRET present:", !!MUX_TOKEN_SECRET);
-    
-    if (!MUX_TOKEN_ID || !MUX_TOKEN_SECRET) {
-      console.error("[ai-execute-edits] FATAL: Mux credentials not configured");
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Mux credentials not configured. Please add MUX_TOKEN_ID and MUX_TOKEN_SECRET secrets." 
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
-      );
-    }
+    const muxAvailable = !!MUX_TOKEN_ID && !!MUX_TOKEN_SECRET;
+    console.log("[ai-execute-edits] Mux available (shorts only):", muxAvailable);
 
     const body = await req.json();
     console.log("[ai-execute-edits] Request body:", JSON.stringify(body));
@@ -328,9 +318,9 @@ serve(async (req) => {
         
         // REEL_RENDERER=ffmpeg → self-hosted renderer; else legacy Creatomate.
         // Same request/response contract either way.
-        const reelRenderFn = Deno.env.get("REEL_RENDERER") === "ffmpeg"
-          ? "render-reel-ffmpeg"
-          : "render-reel";
+        const reelRenderFn = Deno.env.get("REEL_RENDERER") === "creatomate"
+          ? "render-reel"
+          : "render-reel-ffmpeg";
         const renderRes = await supabase.functions.invoke(reelRenderFn, {
           body: {
             job_id: video_edit_id,
@@ -362,9 +352,12 @@ serve(async (req) => {
     }
 
     // SHORTS: Extract individual clips
-    if (render_type === "shorts" || render_type === "all") {
+    if ((render_type === "shorts" || render_type === "all") && !muxAvailable) {
+      console.warn("[ai-execute-edits] Skipping shorts — Mux not configured (reel still renders via ffmpeg)");
+    }
+    if ((render_type === "shorts" || render_type === "all") && muxAvailable) {
       console.log("[ai-execute-edits] Extracting shorts...");
-      
+
       const shorts = aiSuggestions.shorts || aiSuggestions.broll_cues || aiSuggestions.viral_moments || [];
       console.log("[ai-execute-edits] Found", shorts.length, "shorts to extract");
       
