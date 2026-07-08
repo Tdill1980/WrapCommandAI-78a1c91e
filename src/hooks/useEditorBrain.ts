@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 export interface EditorBrainClip {

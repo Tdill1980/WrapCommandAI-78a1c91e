@@ -58,7 +58,7 @@ import { PostRenderModal } from "@/components/reel-builder/PostRenderModal";
 import { ContentMetadataPanel, useContentMetadata, ContentMetadata } from "@/components/content/ContentMetadataPanel";
 import { MediaFile } from "@/components/media/MediaLibrary";
 import { DARA_FORMATS, DaraFormat } from "@/lib/dara-denney-formats";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { downloadToDevice } from "@/lib/downloadUtils";
 import { sanitizeForJson } from "@/lib/sanitizeForJson";
 import { createCreativeWithTags, saveBlueprintSnapshot, updateCreative, replaceStatusTag, SourceType } from "@/lib/creativeVault";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { supabase, lovableFunctions, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ContentSuggestion {

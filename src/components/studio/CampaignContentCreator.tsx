@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Sparkles, Lock, AlertTriangle, CheckCircle2, Copy, Film } from "lucide-react";
 import { useHybridGenerate, CampaignOutput } from "@/hooks/useHybridGenerate";
 import { JANUARY_2026_CAMPAIGN } from "@/lib/campaign-prompts/january-2026";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, contentDB } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface CampaignContentCreatorProps {
