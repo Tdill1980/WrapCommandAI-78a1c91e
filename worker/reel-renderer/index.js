@@ -100,66 +100,93 @@ async function renderReel(job) {
 
   const work = await mkdtemp(join(tmpdir(), "reel-"));
   try {
-    // v1: single-clip — the first scene. (Multi-scene concat: build one
-    // trimmed+scaled+cropped segment per scene, then concat the segments
-    // with the concat demuxer before applying captions/music. Same tools.)
-    const scene = scenes[0];
-    const srcUrl = scene.clipUrl || scene.clip_url || scene.source;
-    if (!srcUrl) throw new Error("first scene has no clipUrl");
-
-    const srcPath = join(work, "src.mp4");
-    await download(srcUrl, srcPath);
-
-    const start = Number(scene.start || 0);
-    const end = Number(scene.end || start + 6);
-    const dur = Math.max(0.5, end - start);
-
-    // Video filter chain: scale to cover the target, center-crop, then text.
-    const filters = [
+    // Normalize each scene into an identical-params, audio-stripped segment so
+    // the concat demuxer can join them with -c copy. Per-scene text is burned
+    // in here (segment-local time); timeline captions + music are applied
+    // AFTER concat (they reference absolute reel time). Single-clip is just
+    // the N=1 case of this — no separate code path.
+    const baseFilters = [
       `scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=increase`,
       `crop=${TARGET_W}:${TARGET_H}`,
       `setsar=1`,
     ];
-    if (scene.text?.trim()) {
-      filters.push(drawtext({ text: scene.text, position: scene.textPosition || "bottom", fontsize: 68 }));
+    // Fixed encode params — segments MUST match for concat -c copy to work.
+    const segEncode = [
+      "-an",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      "-pix_fmt", "yuv420p", "-r", "30", "-video_track_timescale", "30000",
+    ];
+
+    const segPaths = [];
+    let timelineDur = 0;
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
+      const srcUrl = scene.clipUrl || scene.clip_url || scene.source;
+      if (!srcUrl) throw new Error(`scene ${i} has no clipUrl`);
+      const srcPath = join(work, `src${i}.mp4`);
+      await download(srcUrl, srcPath);
+
+      const start = Number(scene.start || 0);
+      const end = Number(scene.end || start + 6);
+      const dur = Math.max(0.5, end - start);
+
+      const vf = [...baseFilters];
+      if (scene.text?.trim()) {
+        vf.push(drawtext({ text: scene.text, position: scene.textPosition || "bottom", fontsize: 68 }));
+      }
+      const segPath = join(work, `seg${i}.mp4`);
+      await run("ffmpeg", ["-y", "-ss", String(start), "-t", String(dur), "-i", srcPath, "-vf", vf.join(","), ...segEncode, segPath]);
+      segPaths.push(segPath);
+      timelineDur += dur;
     }
+
+    // End card as its own solid-black segment appended to the reel.
+    if (bp.endCard?.text) {
+      const ecDur = Math.max(0.8, Number(bp.endCard.duration || 2));
+      const vf = [drawtext({ text: bp.endCard.text, position: "center", fontsize: 80 })];
+      if (bp.endCard.cta) vf.push(drawtext({ text: bp.endCard.cta, position: "bottom", fontsize: 60 }));
+      const ecPath = join(work, "seg_endcard.mp4");
+      await run("ffmpeg", ["-y", "-f", "lavfi", "-i", `color=c=black:s=${TARGET_W}x${TARGET_H}:d=${ecDur}:r=30`, "-vf", vf.join(","), ...segEncode, ecPath]);
+      segPaths.push(ecPath);
+      timelineDur += ecDur;
+    }
+
+    // Concat the normalized segments (stream copy — params match by construction).
+    const listPath = join(work, "concat.txt");
+    await writeFile(listPath, segPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"));
+    const stitchedPath = join(work, "stitched.mp4");
+    await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", stitchedPath]);
+
+    // Timeline captions (absolute reel time, span across scenes) + music.
+    const capFilters = [];
     for (const cap of job.captions || []) {
       if (!cap.text?.trim()) continue;
       const cs = Number(cap.time || 0);
       const ce = cs + Math.max(0.3, Number(cap.duration || 2));
-      filters.push(drawtext({ text: cap.text, position: cap.position || "bottom", start: cs, end: ce, fontsize: 56 }));
+      capFilters.push(drawtext({ text: cap.text, position: cap.position || "bottom", start: cs, end: ce, fontsize: 56 }));
     }
-    if (bp.endCard?.text) {
-      // End card as a text card over the last endCard.duration seconds.
-      const ecStart = Math.max(0, dur - Number(bp.endCard.duration || 2));
-      filters.push(drawtext({ text: bp.endCard.text, position: "center", start: ecStart, end: dur, fontsize: 80 }));
-      if (bp.endCard.cta) {
-        filters.push(drawtext({ text: bp.endCard.cta, position: "bottom", start: ecStart, end: dur, fontsize: 60 }));
-      }
-    }
+    const hasMusic = job.music_url && /^https?:\/\//i.test(job.music_url);
 
     const outPath = join(work, "out.mp4");
-    const args = ["-y", "-ss", String(start), "-t", String(dur), "-i", srcPath];
-
-    const hasMusic = job.music_url && /^https?:\/\//i.test(job.music_url);
-    if (hasMusic) {
-      const musicPath = join(work, "music.m4a");
-      await download(job.music_url, musicPath);
-      args.push("-i", musicPath);
+    if (!capFilters.length && !hasMusic) {
+      // Nothing to overlay or mix — the stitched reel IS the final video.
+      await run("ffmpeg", ["-y", "-i", stitchedPath, "-c", "copy", "-movflags", "+faststart", outPath]);
+    } else {
+      const args = ["-y", "-i", stitchedPath];
+      if (hasMusic) {
+        const musicPath = join(work, "music.m4a");
+        await download(job.music_url, musicPath);
+        args.push("-i", musicPath);
+      }
+      if (capFilters.length) args.push("-vf", capFilters.join(","));
+      if (hasMusic) {
+        args.push("-af", `afade=t=out:st=${Math.max(0, timelineDur - 1)}:d=1`, "-map", "0:v:0", "-map", "1:a:0", "-shortest", "-c:a", "aac", "-b:a", "128k");
+      } else {
+        args.push("-map", "0:v:0");
+      }
+      args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "30", "-movflags", "+faststart", outPath);
+      await run("ffmpeg", args);
     }
-
-    args.push("-vf", filters.join(","));
-    if (hasMusic) {
-      // Use the music track, fade it out at the end, drop original audio.
-      args.push("-af", `afade=t=out:st=${Math.max(0, dur - 1)}:d=1`, "-map", "0:v:0", "-map", "1:a:0", "-shortest");
-    }
-    args.push(
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-      "-pix_fmt", "yuv420p", "-r", "30", "-movflags", "+faststart",
-      "-c:a", "aac", "-b:a", "128k",
-      outPath,
-    );
-    await run("ffmpeg", args);
 
     // Thumbnail (first frame)
     const thumbPath = join(work, "thumb.jpg");
