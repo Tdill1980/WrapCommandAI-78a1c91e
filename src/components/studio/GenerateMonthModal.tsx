@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sparkles, Loader2, Calendar, CheckCircle } from 'lucide-react';
 import { format, addMonths, startOfMonth, addDays, getDay } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, contentDB } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 

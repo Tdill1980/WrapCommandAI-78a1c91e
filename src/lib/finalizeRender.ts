@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, contentDB } from '@/integrations/supabase/client';
 
 export interface FinalizeRenderParams {
   sourceType: 'ai_creative' | 'video_edit_queue' | 'reel_builder';

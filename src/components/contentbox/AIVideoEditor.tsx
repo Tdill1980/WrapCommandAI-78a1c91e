@@ -152,7 +152,7 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
     }
 
     try {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { supabase, contentDB } = await import("@/integrations/supabase/client");
       
       const { error } = await contentDB.from("content_queue").insert({
         organization_id: organizationId,

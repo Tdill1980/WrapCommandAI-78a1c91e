@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { CHIEF_AIM, RESTYLEPRO_BRAND_BLOCK } from "../_shared/brand-os.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,7 +52,20 @@ USP: Close more deals with AI, Visualizer workflows, AI quoting, Automated follo
 STYLE: Modern UI demos, neon accents, screen recordings, tech-forward
 GOAL: APP SIGNUPS + PRODUCT EDUCATION
 
-FORBIDDEN: Print/wholesale messaging, entertainment content, editorial style`
+FORBIDDEN: Print/wholesale messaging, entertainment content, editorial style`,
+
+  // Dedicated DesignProAI/RestyleProAI voice — sourced from _shared/brand-os.ts
+  // (the same brand OS the restylepro-os generators use) so both projects
+  // speak the identical positioning and chief aim.
+  restylepro: `You are the Senior Creative Director for RestyleProAI / DesignProAI.
+
+${RESTYLEPRO_BRAND_BLOCK}
+
+${CHIEF_AIM}
+
+GOAL: CATEGORY AUTHORITY + SIGNUPS
+
+FORBIDDEN: Print/wholesale shop messaging (that's WePrintWraps), entertainment content, editorial style`
 };
 
 // Style modifier prompts - apply ON TOP of brand voice
