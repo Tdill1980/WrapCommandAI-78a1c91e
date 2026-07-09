@@ -53,6 +53,21 @@ function extFromContentType(ct: string | null, filename: string | null): string 
   return "mp4";
 }
 
+/**
+ * Build a direct, server-downloadable URL for a Google Drive share/download link.
+ * Drive's `uc?export=download` returns an HTML virus-scan confirm page for larger
+ * files; `drive.usercontent.google.com/download?...&confirm=t` streams the bytes
+ * directly. If we can't find a file id we return the original URL unchanged.
+ */
+function driveDirectUrl(url: string): string {
+  const id =
+    url.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] ||
+    url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] ||
+    null;
+  if (!id) return url;
+  return `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
+}
+
 function contentTypeForExt(ext: string): string {
   const map: Record<string, string> = {
     mp4: "video/mp4",
@@ -109,7 +124,7 @@ serve(async (req: Request) => {
   for (const row of rows) {
     const srcUrl = row.file_url as string;
     try {
-      const res = await fetch(srcUrl, { redirect: "follow" });
+      const res = await fetch(driveDirectUrl(srcUrl), { redirect: "follow" });
       if (!res.ok) {
         failed++; details.push({ id: row.id, status: "fetch_failed", http: res.status });
         continue;
