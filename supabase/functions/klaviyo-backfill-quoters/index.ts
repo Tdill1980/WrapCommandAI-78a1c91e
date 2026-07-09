@@ -91,26 +91,32 @@ async function bulkImport(listId: string, customers: { email: string; name: stri
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  let body: { senders?: { email: string; name?: string }[]; dry_run?: boolean; listName?: string } = {};
+  let body: { senders?: { email: string; name?: string }[]; dry_run?: boolean; listName?: string; classify?: boolean } = {};
   try { body = await req.json(); } catch { /* */ }
   const senders = (body.senders ?? []).filter((s) => s?.email).map((s) => ({ email: s.email.toLowerCase(), name: s.name || "" }));
   const dryRun = body.dry_run !== false; // default TRUE
+  const doClassify = body.classify !== false; // default TRUE; false = trust the pre-filtered list
   const listName = body.listName || "WPW Quote Requesters (Outlook)";
   if (!senders.length) return json({ error: "pass senders: [{email,name}]" }, 400);
 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const klaviyoKey = Deno.env.get("KLAVIYO_API_KEY");
-  if (!geminiKey) return json({ error: "GEMINI_API_KEY missing" }, 500);
 
-  // Classify in batches.
+  // Classify in batches (unless the caller already pre-filtered, e.g. actual
+  // quote-request senders — then import them directly).
   const verdict: Record<string, boolean> = {};
-  for (let i = 0; i < senders.length; i += BATCH) {
-    const batch = senders.slice(i, i + BATCH);
-    try {
-      Object.assign(verdict, await classifyBatch(batch, geminiKey));
-    } catch (e) {
-      return json({ error: `classify failed at ${i}`, detail: String(e).slice(0, 200) }, 502);
+  if (doClassify) {
+    if (!geminiKey) return json({ error: "GEMINI_API_KEY missing" }, 500);
+    for (let i = 0; i < senders.length; i += BATCH) {
+      const batch = senders.slice(i, i + BATCH);
+      try {
+        Object.assign(verdict, await classifyBatch(batch, geminiKey));
+      } catch (e) {
+        return json({ error: `classify failed at ${i}`, detail: String(e).slice(0, 200) }, 502);
+      }
     }
+  } else {
+    for (const s of senders) verdict[s.email] = true;
   }
   const customers = senders.filter((s) => verdict[s.email]);
   const rejected = senders.filter((s) => !verdict[s.email]);
