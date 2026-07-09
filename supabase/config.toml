@@ -451,3 +451,6 @@ verify_jwt = false
 
 [functions.mailbox-quote-folder]
 verify_jwt = false
+
+[functions.mailbox-senders]
+verify_jwt = false
