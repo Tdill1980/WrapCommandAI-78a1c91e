@@ -18,6 +18,16 @@ const INTERNAL_DOMAINS = ["weprintwraps.com", "restyleproai.com"];
 const NOREPLY_RE = /(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notifications?@|bounce)/i;
 const MAX_PER_MAILBOX = 3000;
 
+// Quote-REQUEST signal (same heuristic as mailbox-quote-report). When
+// mode="quote_requests" (default) we keep only senders whose email reads like a
+// real wrap quote request — high-intent buyers, not random inbox traffic.
+const REQ_RE = /\b(quote|pricing|\bprice\b|how much|cost to wrap|estimate|ballpark|interested in|looking to wrap|wrap my|get (a )?wrap|need (a )?wrap|square ?f(ee|oo)?t|how many yards|do you (do|make)|can you (do|wrap|print))\b/i;
+const WRAP_RE = /\b(wrap|vinyl|decal|graphic|ppf|tint|vehicle|truck|van|fleet|car|trailer|sqft|sq ft|yard|banner|sign|print)\b/i;
+function isQuoteRequest(subject: string, preview: string): boolean {
+  const t = `${subject}\n${preview}`;
+  return (REQ_RE.test(t) && WRAP_RE.test(t)) || REQ_RE.test(subject);
+}
+
 async function getAccessToken(): Promise<string> {
   const tenantId = Deno.env.get("MICROSOFT_TENANT_ID");
   const clientId = Deno.env.get("MICROSOFT_CLIENT_ID");
@@ -43,10 +53,11 @@ function isInternal(email: string): boolean {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  let body: { mailboxes?: string[]; sinceDays?: number } = {};
+  let body: { mailboxes?: string[]; sinceDays?: number; mode?: string } = {};
   try { body = await req.json(); } catch { /* defaults */ }
   const mailboxes = body.mailboxes?.length ? body.mailboxes : DEFAULT_MAILBOXES;
   const sinceDays = body.sinceDays ?? 90;
+  const quoteOnly = (body.mode ?? "quote_requests") === "quote_requests";
   const sinceIso = new Date(Date.now() - sinceDays * 86400_000).toISOString();
 
   try {
@@ -58,7 +69,7 @@ serve(async (req) => {
     for (const mb of mailboxes) {
       let url =
         `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mb)}/mailFolders/inbox/messages` +
-        `?$select=from,receivedDateTime&$top=100&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc`;
+        `?$select=from,subject,bodyPreview,receivedDateTime&$top=100&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc`;
       let scanned = 0;
       while (url && scanned < MAX_PER_MAILBOX) {
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: "eventual" } });
@@ -71,6 +82,7 @@ serve(async (req) => {
           const email = (ea.address || "").toLowerCase().trim();
           if (!email || !email.includes("@")) continue;
           if (isInternal(email) || NOREPLY_RE.test(email)) continue;
+          if (quoteOnly && !isQuoteRequest(m.subject || "", m.bodyPreview || "")) continue;
           const when = m.receivedDateTime || "";
           const cur = map.get(email);
           if (cur) {
