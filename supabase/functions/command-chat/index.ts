@@ -18,6 +18,15 @@ const ORG_ID = '031ac427-f078-4086-a9bc-7bdb78cc1c73'; // WePrintWraps
 const OPERATOR_PHONE = '+14807726003'; // Jackson
 
 // =====================================================
+// 🧪 TEST MODE — set back to null before going live!
+// While this holds an email, EVERY escalation is emailed here instead of the
+// real team, the silent CC is skipped, and the operator SMS is suppressed — so
+// you can test the "forward a problem ticket" flow without pinging Jackson/
+// Lance/Grant. Set to null to restore normal team routing + SMS.
+// =====================================================
+const ESCALATION_TEST_OVERRIDE: string | null = 'trish@weprintwraps.com';
+
+// =====================================================
 // ACE — self-contained catalog / pricing / routing
 // (These used to live in cmd-* micro-functions that were
 //  never deployed, so every tool 500'd. Now inline.)
@@ -311,6 +320,9 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
   if (name === 'cmd_escalate') {
     const type = String(input.escalation_type || 'support');
     const member = WPW_TEAM[type] || WPW_TEAM.support;
+    // In test mode, every escalation goes to the tester's inbox (no team CC).
+    const routeTo = ESCALATION_TEST_OVERRIDE || member.email;
+    const routeCc = ESCALATION_TEST_OVERRIDE ? undefined : SILENT_CC;
     try {
       const r = await fetch(`${baseUrl}/functions/v1/forward-to-team`, {
         method: 'POST',
@@ -318,8 +330,8 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
         body: JSON.stringify({
           conversation_id: input.conversation_id,
           organization_id: ORG_ID,
-          to_email: member.email,
-          cc_email: SILENT_CC,
+          to_email: routeTo,
+          cc_email: routeCc,
           subject: `[Ace • WPW] ${type.toUpperCase()} — ${input.customer_name || 'Website visitor'}`,
           reason: input.reason || `${type} escalation from website chat`,
           context: `Escalation type: ${type} → route to ${member.name} (${member.role})\n` +
@@ -333,7 +345,7 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
       });
       const res = await r.json();
       const ok = r.ok && !res.error;
-      return { success: ok, escalation_type: type, routed_to: member.email, team_member: member.name };
+      return { success: ok, escalation_type: type, routed_to: routeTo, team_member: member.name, test_mode: !!ESCALATION_TEST_OVERRIDE };
     } catch (e) {
       console.error('[Ace] escalate/forward-to-team failed:', e);
       return { success: false, escalation_type: type, error: 'escalation failed' };
@@ -819,7 +831,7 @@ Contact: hello@weprintwraps.com`;
     // The AI handles every chat. A human is only pinged when the customer explicitly
     // asks for a rep (the "Talk to a rep" button / rush jobs / real issues) -> cmd_escalate.
     try {
-      if (escalatedThisTurn) {
+      if (escalatedThisTurn && !ESCALATION_TEST_OVERRIDE) {
         const shortSession = String(session_id).substring(0, 6);
         await sendOperatorSMS(
           `WPW CHAT - REP REQUESTED [${shortSession}] (${escalatedThisTurn})\n` +
