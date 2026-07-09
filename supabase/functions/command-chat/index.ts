@@ -17,6 +17,66 @@ const ORG_ID = '031ac427-f078-4086-a9bc-7bdb78cc1c73'; // WePrintWraps
 // A human rep is only pinged when the customer asks for one (rush jobs / real issues)
 const OPERATOR_PHONE = '+14807726003'; // Jackson
 
+// =====================================================
+// ACE — self-contained catalog / pricing / routing
+// (These used to live in cmd-* micro-functions that were
+//  never deployed, so every tool 500'd. Now inline.)
+// =====================================================
+
+// WPW product catalog — prices current as of 2026-07 (window perf reconciled to $5.95)
+const WPW_PRODUCTS: Record<string, { id: number; name: string; price: number; type: 'per_sqft' | 'per_yard' | 'flat'; url: string }> = {
+  avery_wrap:    { id: 79,    name: 'Avery MPI 1105 with DOL 1460Z', price: 5.27,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/' },
+  '3m_wrap':     { id: 72,    name: '3M IJ180Cv3 with 8518',         price: 5.27,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/' },
+  cut_avery:     { id: 108,   name: 'Avery Contour-Cut',             price: 6.32,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/' },
+  cut_3m:        { id: 19420, name: '3M Contour-Cut',                price: 6.92,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/' },
+  window_perf:   { id: 80,    name: 'Perforated Window Vinyl 50/50', price: 5.95,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/' },
+  wall_wrap:     { id: 70093, name: 'Wall Wrap Printed Vinyl',       price: 3.25,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/' },
+  camo_carbon:   { id: 1726,  name: 'Camo & Carbon (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/camo-carbon-wrap-by-the-yard/' },
+  metal_marble:  { id: 39698, name: 'Metal & Marble (by the yard)',  price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-metal-marble/' },
+  wicked_wild:   { id: 4181,  name: 'Wicked & Wild (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-wicked-wild-wrap-prints/' },
+  bape_camo:     { id: 42809, name: 'Bape Camo (by the yard)',       price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-bape-camo/' },
+  modern_trippy: { id: 52489, name: 'Modern & Trippy (by the yard)', price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-modern-trippy/' },
+  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 750,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
+  design_output: { id: 58160, name: 'Design / File Output',          price: 95,    type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+};
+
+// Escalation routing — the WPW management team (problem tickets forward here)
+const WPW_TEAM: Record<string, { name: string; email: string; role: string; phone?: string }> = {
+  bulk:    { name: 'Jackson', email: 'jackson@weprintwraps.com', role: 'Bulk/Fleet Sales',    phone: '+14807726003' },
+  design:  { name: 'Grant',   email: 'grant@weprintwraps.com',   role: 'Design Services' },
+  quality: { name: 'Trish',   email: 'trish@weprintwraps.com',   role: 'Quality/Escalations', phone: '+16233135418' },
+  support: { name: 'Lance',   email: 'lance@weprintwraps.com',   role: 'Customer Support' },
+};
+const SILENT_CC = 'trish@weprintwraps.com';
+
+// Volume discount tiers by total sqft
+function bulkDiscount(sqft: number): number {
+  if (sqft >= 2500) return 0.20;
+  if (sqft >= 1500) return 0.15;
+  if (sqft >= 1000) return 0.10;
+  if (sqft >= 500)  return 0.05;
+  return 0;
+}
+
+// Standard WooCommerce add-to-cart URL (works on any Woo store — no REST call needed)
+function cartUrl(productId: number, qty = 1): string {
+  const q = Math.max(1, Math.round(qty || 1));
+  return `https://weprintwraps.com/cart/?add-to-cart=${productId}${q > 1 ? `&quantity=${q}` : ''}`;
+}
+
+const KNOWLEDGE: Record<string, string> = {
+  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design from $750. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
+  products: 'We print full vehicle wraps (Avery/3M), contour-cut graphics/decals/labels, perforated window vinyl, wall wraps, pre-designed wrap-by-the-yard patterns, and custom design. Print & ship only — no installation.',
+  shipping: 'Orders ship in 1-2 business days. Free shipping on orders $750+. Add to cart and enter your zip for an instant shipping price.',
+  turnaround: 'Print production is 1-2 business days, then it ships.',
+  file_upload: 'Upload artwork at checkout or email hello@weprintwraps.com for a free print-readiness review. Send PDF/AI/EPS at full scale.',
+  design_services: 'No artwork? Custom vehicle wrap design starts at $750; design/file output help is $95. Email design@weprintwraps.com.',
+  guarantee: 'We print on genuine 3M and Avery media with UV inks, made in the USA.',
+  contact: 'hello@weprintwraps.com for general questions, design@weprintwraps.com for design.',
+  installation: 'We are print & ship ONLY — we do not install. We can point you to install resources.',
+  restyleproai: 'RestyleProAI is our AI wrap-visualization tool — upload a photo of your vehicle and preview wrap designs/colors before you buy. Ask us for a link if you want to try it.',
+};
+
 async function sendOperatorSMS(body: string): Promise<void> {
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
   const auth = Deno.env.get('TWILIO_AUTH_TOKEN');
@@ -56,7 +116,7 @@ const TOOLS = [
   {
     name: "cmd_pricing",
     description: `Calculate price for any WPW product. Products:
-VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.32), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
+VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.95), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
 DESIGN (flat): custom_design ($750), design_hour ($95), file_output ($95)
@@ -79,6 +139,13 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
     name: "cmd_quote",
     description: "Create quote and send email. Use ONLY after: name + email + phone + vehicle/product + price are ALL confirmed.",
     input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_name", "customer_email", "vehicle", "sqft", "price"] }
+  },
+  {
+    name: "cmd_cart",
+    description: `Generate a WooCommerce add-to-cart link so the customer can buy now. Use after you've given a price and the customer is ready to order (or asks "where do I buy / add to cart / checkout").
+product keys: avery_wrap, 3m_wrap, cut_avery, cut_3m, window_perf, wall_wrap, camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy, custom_design, design_output. Default: avery_wrap.
+quantity = sqft for per-sqft products, yards for by-the-yard, units for flat items.`,
+    input_schema: { type: "object", properties: { product: { type: "string", description: "Product key from the list" }, quantity: { type: "number", description: "Qty (sqft/yards/units). Default 1." } }, required: [] }
   },
   {
     name: "cmd_order",
@@ -116,7 +183,7 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   }
 ];
 
-async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string }): Promise<any> {
+async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string; product_key?: string }): Promise<any> {
   // Handle cmd_update_contact locally (updates command_contacts)
   if (name === 'cmd_update_contact') {
     console.log(`[CommandChat] Updating contact:`, JSON.stringify(input));
@@ -145,19 +212,148 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  // cmd_quote -> create-quote-from-chat ("Wren"): the real WPW quote tool.
-  // It saves the quote with the correct schema, emails the customer (Resend),
-  // and logs to ai_actions. We pass the structured vehicle the agent looked up.
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
-  console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
-  const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify(input)
-  });
-  const result = await res.json();
-  console.log(`[CommandChat] ${name} result:`, JSON.stringify(result));
-  return result;
+  console.log(`[Ace] Tool ${name}:`, JSON.stringify(input));
+
+  // cmd_knowledge — inline knowledge base (was a missing micro-function)
+  if (name === 'cmd_knowledge') {
+    const topic = String(input.topic || '').toLowerCase().replace(/[^a-z_]/g, '_');
+    const info = KNOWLEDGE[topic] || KNOWLEDGE[topic.replace(/_/g, '')] || Object.values(KNOWLEDGE).join(' ');
+    return { topic, info };
+  }
+
+  // cmd_vehicle — call the REAL vehicle-sqft function (this one is deployed)
+  if (name === 'cmd_vehicle') {
+    try {
+      const r = await fetch(`${baseUrl}/functions/v1/vehicle-sqft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ year: input.year, make: input.make, model: input.model }),
+      });
+      const v = await r.json();
+      const sqft = typeof v.sqft === 'number' ? v.sqft : null;
+      const roof = v.panels?.roof ?? (sqft ? Math.round(sqft * 0.10) : null);
+      return {
+        vehicle: `${input.year || ''} ${input.make || ''} ${input.model || ''}`.replace(/\s+/g, ' ').trim(),
+        sqft,
+        roof,
+        sqft_with_roof: sqft ? sqft + (roof || 0) : null,
+        needs_review: !!v.needs_review,
+      };
+    } catch (e) {
+      console.error('[Ace] vehicle-sqft failed:', e);
+      return { sqft: null, needs_review: true, error: 'vehicle lookup failed' };
+    }
+  }
+
+  // cmd_pricing — inline calculation from the catalog (was a missing micro-function)
+  if (name === 'cmd_pricing') {
+    const pk = String(input.product || 'avery_wrap');
+    const p = WPW_PRODUCTS[pk] || WPW_PRODUCTS['avery_wrap'];
+    let prices: any = { rate: p.price };
+    if (p.type === 'per_sqft') {
+      const sqft = Number(input.sqft) || 0;
+      const sqftRoof = Number(input.sqft_with_roof) || sqft;
+      const totalSqft = Math.max(sqft, sqftRoof) * (Number(input.vehicle_count) || 1);
+      const disc = bulkDiscount(totalSqft);
+      prices = {
+        rate: p.price,
+        default: Math.round(sqft * p.price * (1 - disc) * 100) / 100,
+        with_roof: Math.round(sqftRoof * p.price * (1 - disc) * 100) / 100,
+        discount_pct: Math.round(disc * 100),
+      };
+    } else if (p.type === 'per_yard') {
+      const yards = Number(input.yards) || 1;
+      prices = { rate: p.price, default: Math.round(yards * p.price * 100) / 100 };
+    } else {
+      prices = { rate: p.price, default: p.price };
+    }
+    return { product: p.name, product_key: pk, url: p.url, cart_url: cartUrl(p.id), prices };
+  }
+
+  // cmd_cart — build a working WooCommerce add-to-cart link
+  if (name === 'cmd_cart') {
+    const pk = String(input.product || context?.product_key || 'avery_wrap');
+    const p = WPW_PRODUCTS[pk] || WPW_PRODUCTS['avery_wrap'];
+    const qty = Number(input.quantity) || 1;
+    return { product: p.name, product_key: pk, cart_url: cartUrl(p.id, qty), product_url: p.url };
+  }
+
+  // cmd_order — look up a WooCommerce order (was a missing micro-function)
+  if (name === 'cmd_order') {
+    const num = String(input.order_number || '').replace(/\D/g, '');
+    if (!num) return { found: false, message: 'No order number provided' };
+    try {
+      const rows = await dbQuery(baseUrl, key, 'shopflow_orders',
+        `select=order_number,status,customer_name,tracking_number,tracking_url&order_number=eq.${num}&limit=1`);
+      if (Array.isArray(rows) && rows.length) {
+        const o = rows[0];
+        return { found: true, order_number: o.order_number, status: o.status, tracking_number: o.tracking_number || null, tracking_url: o.tracking_url || null };
+      }
+      return { found: false, message: `Order #${num} not found in our system yet` };
+    } catch (e) {
+      console.error('[Ace] order lookup failed:', e);
+      return { found: false, message: 'Order lookup unavailable right now' };
+    }
+  }
+
+  // cmd_synopsis — inline one-liner for the admin inbox (was a missing micro-function)
+  if (name === 'cmd_synopsis') {
+    const bits: string[] = [];
+    if (input.vehicle) bits.push(String(input.vehicle));
+    if (input.sqft) bits.push(`${input.sqft} sqft`);
+    if (input.price) bits.push(`$${input.price}`);
+    if (input.email_captured) bits.push('email captured');
+    const synopsis = bits.length ? bits.join(' • ') : String(input.message || '').substring(0, 90);
+    return { synopsis };
+  }
+
+  // cmd_escalate — forward the problem ticket to the right manager via forward-to-team
+  if (name === 'cmd_escalate') {
+    const type = String(input.escalation_type || 'support');
+    const member = WPW_TEAM[type] || WPW_TEAM.support;
+    try {
+      const r = await fetch(`${baseUrl}/functions/v1/forward-to-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({
+          conversation_id: input.conversation_id,
+          organization_id: ORG_ID,
+          to_email: member.email,
+          cc_email: SILENT_CC,
+          subject: `[Ace • WPW] ${type.toUpperCase()} — ${input.customer_name || 'Website visitor'}`,
+          reason: input.reason || `${type} escalation from website chat`,
+          context: `Escalation type: ${type} → route to ${member.name} (${member.role})\n` +
+            `Customer: ${input.customer_name || 'unknown'} | ${input.customer_email || 'no email'} | ${input.customer_phone || 'no phone'}\n` +
+            `Vehicle: ${input.vehicle || 'n/a'}\n` +
+            `Reason: ${input.reason || 'n/a'}`,
+          sender_name: input.customer_name || 'Website visitor',
+          sender_email: input.customer_email || null,
+          original_message: input.trigger_message || input.reason || '',
+        }),
+      });
+      const res = await r.json();
+      const ok = r.ok && !res.error;
+      return { success: ok, escalation_type: type, routed_to: member.email, team_member: member.name };
+    } catch (e) {
+      console.error('[Ace] escalate/forward-to-team failed:', e);
+      return { success: false, escalation_type: type, error: 'escalation failed' };
+    }
+  }
+
+  // cmd_quote -> create-quote-from-chat: the real WPW quote tool.
+  // It saves the quote with the correct schema, emails the customer (Resend), and logs to ai_actions.
+  if (name === 'cmd_quote') {
+    const res = await fetch(`${baseUrl}/functions/v1/create-quote-from-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify(input),
+    });
+    const result = await res.json();
+    console.log(`[Ace] cmd_quote result:`, JSON.stringify(result));
+    return result;
+  }
+
+  return { error: `Unknown tool ${name}` };
 }
 
 async function dbQuery(url: string, key: string, table: string, query: string): Promise<any> {
@@ -357,14 +553,15 @@ serve(async (req) => {
     }
 
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
-    const prompt = `You are a member of the WePrintWraps team (weprintwraps.com) — we are a PRINT SHOP ONLY (no installation).
+    const prompt = `You are Ace, the WePrintWraps wrap concierge (weprintwraps.com) — a WePrintWraps × RestyleProAI assistant. WePrintWraps is a PRINT SHOP ONLY (no installation).
 
 YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
 
 IDENTITY:
-- You're a real WePrintWraps team member helping over chat. Speak as "we"/"us" (the WPW team).
-- Do NOT use a personal name or claim to be a specific person. If asked your name, say you're part of the WePrintWraps team.
-- Never say you're an AI, a bot, or an assistant.
+- Your name is Ace. Greet people as Ace ("Hey, I'm Ace with WePrintWraps").
+- You work with the WePrintWraps team — speak as "we"/"us" for the shop, and "I" as Ace.
+- WePrintWraps × RestyleProAI: if asked, you're Ace, the WPW wrap assistant powered by RestyleProAI. Keep it warm and human, never robotic.
+- Don't over-explain what you are — just help.
 
 VOICE RULES (STRICT):
 - Casual and short, like texting a coworker
@@ -438,7 +635,15 @@ PRICING FLOW:
 1. Customer mentions vehicle -> use cmd_vehicle to get sqft
 2. After getting sqft -> use cmd_pricing to calculate
 3. Give price + relevant order URL in same message
-4. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+4. When they're ready to buy -> use cmd_cart to generate a real add-to-cart link and share it
+5. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+
+BUY / CART:
+- When a customer says they're ready, asks "how do I order", "add to cart", "checkout", or "where do I buy", call cmd_cart and give them the link.
+- cmd_cart returns a real weprintwraps.com cart link — paste it plainly so they can click and pay.
+
+RESTYLEPROAI:
+- If a customer is unsure how a wrap will look, mention RestyleProAI (our AI visualizer) — use cmd_knowledge topic "restyleproai" for details.
 
 CONTACT COLLECTION (GET ALL 4):
 - If name is NOT PROVIDED, ask for it naturally
@@ -450,7 +655,7 @@ CONTACT COLLECTION (GET ALL 4):
 
 PRICING RULES:
 - Avery and 3M wraps are BOTH $5.27/sqft (same price)
-- Window perf: $5.32/sqft
+- Window perf: $5.95/sqft
 - Cut contour Avery: $6.32/sqft, 3M: $6.92/sqft
 - Always state sqft and whether roof is included or excluded
 - Free shipping on orders $750+
@@ -515,7 +720,7 @@ Contact: hello@weprintwraps.com`;
           c.input.trigger_message = message_text;
         }
 
-        const r = await execTool(c.name, c.input, url, key, { email: state.customer_email });
+        const r = await execTool(c.name, c.input, url, key, { email: state.customer_email, product_key: state.product_key });
 
         // Update state from tool results
         if (c.name === 'cmd_update_contact' && r.success && c.input.shop_name) {
@@ -534,6 +739,12 @@ Contact: hello@weprintwraps.com`;
         if (c.name === 'cmd_pricing' && r.prices) {
           state.calculated_price = r.prices.default;
           state.calculated_price_with_roof = r.prices.with_roof;
+          if (r.product_key) state.product_key = r.product_key;
+          if (r.cart_url) state.cart_url = r.cart_url;
+        }
+        if (c.name === 'cmd_cart' && r.cart_url) {
+          state.cart_url = r.cart_url;
+          if (r.product_key) state.product_key = r.product_key;
         }
         if (c.name === 'cmd_quote' && r.success) {
           state.quote_sent = true;
@@ -601,7 +812,7 @@ Contact: hello@weprintwraps.com`;
       channel: 'website',
       direction: 'outbound',
       content: reply,
-      sender_name: 'WPW Team',
+      sender_name: 'Ace',
       created_at: replyTime
     });
 

@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { audio } = await req.json();
+    const { audio, mime_type } = await req.json();
 
     if (!audio) {
       throw new Error('No audio data provided');
@@ -23,38 +23,42 @@ serve(async (req) => {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    console.log('Processing audio transcription...');
+    // The browser MediaRecorder records webm/opus by default. Gemini's audio
+    // understanding accepts it via native inline_data (audio/webm|ogg). The old
+    // build sent audio through the `image_url` field on the OpenAI-compat route,
+    // which does not decode audio — that's why transcription silently failed.
+    const audioMime = typeof mime_type === 'string' && mime_type.startsWith('audio/')
+      ? mime_type
+      : 'audio/webm';
 
-    // Send to Lovable Gateway for transcription
+    console.log(`Processing audio transcription (${audioMime})...`);
+
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GEMINI_API_KEY}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-2.5-flash",
-          messages: [{
+          contents: [{
             role: "user",
-            content: [
-              { type: "text", text: "Transcribe this audio. Return ONLY the transcription text, nothing else." },
-              { type: "image_url", image_url: { url: `data:audio/webm;base64,${audio}` } }
+            parts: [
+              { text: "Transcribe this audio to plain text. Return ONLY the spoken words, nothing else. If there is no discernible speech, return an empty string." },
+              { inline_data: { mime_type: audioMime, data: audio } }
             ]
-          }]
+          }],
+          generationConfig: { temperature: 0 }
         }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Lovable API error:', errorText);
-      throw new Error(`Lovable API error: ${errorText}`);
+      console.error('Gemini API error:', errorText);
+      throw new Error(`Gemini API error: ${errorText}`);
     }
 
     const result = await response.json();
-    const text = result?.choices?.[0]?.message?.content || "";
+    const text = result?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("").trim() || "";
     console.log('Transcription successful:', text);
 
     return new Response(
