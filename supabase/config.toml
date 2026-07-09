@@ -457,3 +457,6 @@ verify_jwt = false
 
 [functions.klaviyo-backfill-quoters]
 verify_jwt = false
+
+[functions.quote-agent-draft]
+verify_jwt = false
