@@ -64,15 +64,18 @@ async function pullFolder(mailbox: string, folder: "inbox" | "sentitems", sinceI
   const dateField = folder === "inbox" ? "receivedDateTime" : "sentDateTime";
   let url =
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/mailFolders/${folder}/messages` +
-    `?$select=subject,bodyPreview,${dateField}&$top=100&$filter=${dateField} ge ${sinceIso}&$orderby=${dateField} desc`;
-  const msgs: { subject: string; preview: string }[] = [];
+    `?$select=subject,bodyPreview,from,${dateField}&$top=100&$filter=${dateField} ge ${sinceIso}&$orderby=${dateField} desc`;
+  const msgs: { subject: string; preview: string; fromEmail: string; fromName: string }[] = [];
   let capped = false;
   while (url && msgs.length < MAX_PER_FOLDER) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ConsistencyLevel: "eventual" } });
     const text = await res.text();
     if (!res.ok) throw new Error(`${folder} ${res.status}: ${text.slice(0, 160)}`);
     const data = JSON.parse(text);
-    for (const m of data.value ?? []) msgs.push({ subject: m.subject || "", preview: m.bodyPreview || "" });
+    for (const m of data.value ?? []) {
+      const ea = (m.from && m.from.emailAddress) || {};
+      msgs.push({ subject: m.subject || "", preview: m.bodyPreview || "", fromEmail: (ea.address || "").toLowerCase(), fromName: ea.name || "" });
+    }
     url = data["@odata.nextLink"] || "";
     if (msgs.length >= MAX_PER_FOLDER && url) capped = true;
   }
@@ -86,9 +89,16 @@ async function reportFor(mailbox: string, sinceIso: string, token: string) {
     const sent = await pullFolder(mailbox, "sentitems", sinceIso, token);
     let requests = 0, sentQuotes = 0;
     const reqSamples: string[] = [], sentSamples: string[] = [];
+    // Dedupe senders of quote-request messages (message-level classification —
+    // the RIGHT signal: this specific email asked for a quote), excluding internal.
+    const reqSenders = new Map<string, { email: string; name: string }>();
     for (const m of inbox.msgs) {
       if (classify(m.subject, m.preview, false) === "quote_request") {
         requests++; if (reqSamples.length < 5) reqSamples.push(m.subject.slice(0, 80));
+        const e = m.fromEmail;
+        if (e && e.includes("@") && !/weprintwraps\.com$|restyleproai\.com$/.test(e) && !/no-?reply|do-?not-?reply|mailer-daemon|postmaster/.test(e)) {
+          if (!reqSenders.has(e)) reqSenders.set(e, { email: e, name: m.fromName });
+        }
       }
     }
     for (const m of sent.msgs) {
@@ -103,6 +113,7 @@ async function reportFor(mailbox: string, sinceIso: string, token: string) {
     out.capped = inbox.capped || sent.capped;
     out.sample_requests = reqSamples;
     out.sample_quotes_sent = sentSamples;
+    out.request_senders = [...reqSenders.values()];
   } catch (e) {
     out.error = String(e).slice(0, 240);
   }
