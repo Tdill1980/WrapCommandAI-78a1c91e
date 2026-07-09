@@ -454,3 +454,6 @@ verify_jwt = false
 
 [functions.mailbox-senders]
 verify_jwt = false
+
+[functions.klaviyo-backfill-quoters]
+verify_jwt = false
