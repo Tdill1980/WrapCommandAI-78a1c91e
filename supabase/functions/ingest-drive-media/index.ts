@@ -98,18 +98,25 @@ serve(async (req: Request) => {
   const batch = Math.min(Math.max(1, body.batch ?? DEFAULT_BATCH), MAX_BATCH);
   const maxBytes = body.max_bytes ?? DEFAULT_MAX_BYTES;
 
-  // How many Drive-linked videos remain overall (for progress reporting).
+  // How many Drive-linked videos remain to attempt (excludes rows already
+  // flagged as un-ingestable, so the caller's loop terminates).
   const { count: remainingBefore } = await db
     .from("content_files")
     .select("id", { count: "exact", head: true })
     .eq("file_type", "video")
-    .ilike("file_url", "%drive.google.com%");
+    .ilike("file_url", "%drive.google.com%")
+    .filter("metadata->>ingest_status", "is", null);
 
+  // Only consider rows that still point at Drive AND haven't already been
+  // attempted-and-flagged. Without the flag filter the oldest stuck files
+  // (too large for edge memory) would be re-fetched first on every call and
+  // the loop would never reach the good clips.
   const { data: rows, error } = await db
     .from("content_files")
     .select("id, file_url, original_filename, metadata")
     .eq("file_type", "video")
     .ilike("file_url", "%drive.google.com%")
+    .filter("metadata->>ingest_status", "is", null)
     .order("created_at", { ascending: true })
     .limit(batch);
 
@@ -121,23 +128,37 @@ serve(async (req: Request) => {
   const details: Array<Record<string, unknown>> = [];
   let ingested = 0, skipped = 0, failed = 0;
 
+  // Stamp a permanent status on a row we could NOT ingest, so future runs skip
+  // it. file_url is left untouched (still the Drive link) so it can be handled
+  // by a large-file path later.
+  const flag = async (row: Record<string, unknown>, status: string, extra: Record<string, unknown> = {}) => {
+    const meta = (row.metadata && typeof row.metadata === "object") ? row.metadata : {};
+    await db
+      .from("content_files")
+      .update({ metadata: { ...meta, ingest_status: status, ...extra } })
+      .eq("id", row.id as string);
+  };
+
   for (const row of rows) {
     const srcUrl = row.file_url as string;
     try {
       const res = await fetch(driveDirectUrl(srcUrl), { redirect: "follow" });
       if (!res.ok) {
         failed++; details.push({ id: row.id, status: "fetch_failed", http: res.status });
+        await flag(row, "fetch_failed", { http: res.status });
         continue;
       }
       const ct = res.headers.get("content-type");
       // Drive returns text/html when it wants a confirm click (large/quota'd files).
       if (ct && ct.includes("text/html")) {
         skipped++; details.push({ id: row.id, status: "drive_interstitial" });
+        await flag(row, "drive_interstitial");
         continue;
       }
       const len = Number(res.headers.get("content-length") || "0");
       if (len && len > maxBytes) {
         skipped++; details.push({ id: row.id, status: "too_large", bytes: len });
+        await flag(row, "too_large", { bytes: len });
         continue;
       }
 
@@ -149,6 +170,7 @@ serve(async (req: Request) => {
       const buf = new Uint8Array(await res.arrayBuffer());
       if (buf.byteLength > maxBytes) {
         skipped++; details.push({ id: row.id, status: "too_large", bytes: buf.byteLength });
+        await flag(row, "too_large", { bytes: buf.byteLength });
         continue;
       }
 
@@ -161,6 +183,7 @@ serve(async (req: Request) => {
         });
       if (upErr) {
         failed++; details.push({ id: row.id, status: "upload_failed", detail: upErr.message });
+        await flag(row, "upload_failed", { detail: upErr.message.slice(0, 200) });
         continue;
       }
 
@@ -178,6 +201,7 @@ serve(async (req: Request) => {
         .eq("id", row.id);
       if (updErr) {
         failed++; details.push({ id: row.id, status: "db_update_failed", detail: updErr.message });
+        await flag(row, "db_update_failed", { detail: updErr.message.slice(0, 200) });
         continue;
       }
 
@@ -186,6 +210,7 @@ serve(async (req: Request) => {
     } catch (e) {
       failed++;
       details.push({ id: row.id, status: "error", detail: String(e).slice(0, 200) });
+      await flag(row, "error", { detail: String(e).slice(0, 200) });
     }
   }
 
@@ -194,7 +219,9 @@ serve(async (req: Request) => {
     ingested,
     skipped,
     failed,
-    remaining: Math.max(0, (remainingBefore ?? rows.length) - ingested),
+    // Every processed row is now either ingested (file_url rewritten) or
+    // flagged (ingest_status set), so all drop out of the next query.
+    remaining: Math.max(0, (remainingBefore ?? rows.length) - rows.length),
     details,
   });
 });
