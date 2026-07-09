@@ -448,3 +448,6 @@ verify_jwt = false
 
 [functions.mailbox-quote-report]
 verify_jwt = false
+
+[functions.mailbox-quote-folder]
+verify_jwt = false
