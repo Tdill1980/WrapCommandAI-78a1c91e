@@ -737,6 +737,10 @@ Return JSON ONLY:
       // which hid every uploaded clip that was never categorized.
       .or("content_category.is.null,content_category.neq.inspo_reference")
       .not("file_url", "is", null)
+      // Exclude raw Google Drive links — browsers/ffmpeg can't play them, so a
+      // reel built from one shows a black clip. Only re-hosted (storage) or
+      // uploaded clips are selectable. (file_url is non-null here, so .not is safe.)
+      .not("file_url", "ilike", "%drive.google.com%")
       .order("created_at", { ascending: false })
       .limit(max_videos || 50);
 

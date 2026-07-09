@@ -262,7 +262,10 @@ export async function selectMediaForIntent(
     // PostgREST `.neq()` drops NULLs (NULL != x → NULL → excluded), which hid
     // every uploaded clip that was never categorized.
     .or('content_category.is.null,and(content_category.neq.ai_output,content_category.neq.inspo_reference)')
-    .not('file_url', 'is', null);
+    .not('file_url', 'is', null)
+    // Exclude raw Google Drive links — browsers/ffmpeg can't play them (black
+    // clip). Only re-hosted (storage) or uploaded clips are selectable.
+    .not('file_url', 'ilike', '%drive.google.com%');
   
   if (assetError) {
     console.error('[SelectionEngine] Failed to fetch assets:', assetError);
