@@ -258,8 +258,10 @@ export async function selectMediaForIntent(
     .select('id, file_url, mux_playback_id, duration_seconds, brand, content_category')
     .eq('organization_id', organizationId)
     .eq('file_type', 'video')
-    .neq('content_category', 'ai_output')
-    .neq('content_category', 'inspo_reference')
+    // Exclude AI output + inspo references but KEEP NULL-category rows.
+    // PostgREST `.neq()` drops NULLs (NULL != x → NULL → excluded), which hid
+    // every uploaded clip that was never categorized.
+    .or('content_category.is.null,and(content_category.neq.ai_output,content_category.neq.inspo_reference)')
     .not('file_url', 'is', null);
   
   if (assetError) {
