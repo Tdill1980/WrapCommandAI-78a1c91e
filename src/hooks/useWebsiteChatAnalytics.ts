@@ -11,12 +11,13 @@ export function useWebsiteChatAnalytics() {
         .select('*', { count: 'exact', head: true })
         .eq('channel', 'website');
 
-      // Get total messages sent by agent (auto responses)
+      // Get total messages sent by agent (auto responses).
+      // Persona has changed over time (Jordan Lee -> WPW Team -> Ace) so match all.
       const { count: autoResponses } = await supabase
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('direction', 'outbound')
-        .eq('sender_name', 'Jordan Lee');
+        .in('sender_name', ['Ace', 'WPW Team', 'Jordan Lee']);
 
       // Get quotes generated from website chat
       const { data: quotes } = await supabase

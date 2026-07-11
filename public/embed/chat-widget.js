@@ -505,6 +505,34 @@
       color: ${colors.primary};
       background: ${colors.bgCard};
     }
+    .wcai-chat-mic {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid ${colors.border};
+      background: ${colors.bgInput};
+      color: ${colors.textMuted};
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .wcai-chat-mic:hover {
+      border-color: ${colors.primary};
+      color: ${colors.primary};
+      background: ${colors.bgCard};
+    }
+    .wcai-chat-mic.recording {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: #fff;
+      animation: wcai-pulse 1s infinite;
+    }
+    @keyframes wcai-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
     .wcai-powered {
       padding: 8px 16px;
       text-align: center;
@@ -770,10 +798,10 @@
   container.innerHTML = `
     <div class="wcai-chat-window" id="wcai-window">
       <div class="wcai-chat-header">
-        <div class="wcai-chat-header-avatar">W</div>
+        <div class="wcai-chat-header-avatar">🧑‍🚀</div>
         <div class="wcai-chat-header-info">
-          <h3>WPW Support Team</h3>
-          <p><span class="wcai-live-dot"></span> Online</p>
+          <h3>Ace</h3>
+          <p><span class="wcai-live-dot"></span> WePrintWraps × RestyleProAI • Online</p>
         </div>
         <button class="wcai-chat-reset" id="wcai-reset" title="Start a new conversation">
           ↻ New chat
@@ -802,7 +830,13 @@
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
-        <input type="text" class="wcai-chat-input" id="wcai-input" placeholder="Type a message..." />
+        <input type="text" class="wcai-chat-input" id="wcai-input" placeholder="Type or tap the mic to talk…" />
+        <button class="wcai-chat-mic" id="wcai-mic" title="Record voice message">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+          </svg>
+        </button>
         <button class="wcai-chat-send" id="wcai-send">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
@@ -810,7 +844,7 @@
         </button>
       </div>
       <div class="wcai-powered">
-        Powered by <a href="https://wrapcommandai.com" target="_blank">WrapCommandAI</a>
+        Powered by <strong style="color:#e6007e;">WePrintWraps × RestyleProAI</strong>
       </div>
     </div>
     <div class="wcai-bubble-row">
@@ -846,6 +880,7 @@
   const input = document.getElementById('wcai-input');
   const sendBtn = document.getElementById('wcai-send');
   const attachBtn = document.getElementById('wcai-attach');
+  const micBtn = document.getElementById('wcai-mic');
   const fileInput = document.getElementById('wcai-file-input');
   const inputArea = document.getElementById('wcai-input-area');
 
@@ -877,6 +912,71 @@
       }
       isCheckMyFileFlow = false;
       fileInput.click();
+    });
+  }
+
+  // ========================================
+  // VOICE INPUT (mic -> transcribe-audio -> input box)
+  // ========================================
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let isRecording = false;
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+        if (blob.size < 1200) { input.placeholder = 'Type or tap the mic to talk…'; return; }
+        input.placeholder = 'Transcribing…';
+        try {
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64 = String(reader.result).split(',')[1];
+            try {
+              const resp = await fetch(config.supabaseUrl + '/functions/v1/transcribe-audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': config.supabaseAnonKey, 'Authorization': 'Bearer ' + config.supabaseAnonKey },
+                body: JSON.stringify({ audio: base64, mime_type: blob.type || 'audio/webm' }),
+              });
+              const data = await resp.json();
+              if (data && data.text) {
+                input.value = (input.value ? input.value + ' ' : '') + data.text;
+                input.focus();
+              }
+            } catch (err) { console.error('[WCAI] transcription failed', err); }
+            input.placeholder = 'Type or tap the mic to talk…';
+          };
+          reader.readAsDataURL(blob);
+        } catch (err) {
+          console.error('[WCAI] audio read failed', err);
+          input.placeholder = 'Type or tap the mic to talk…';
+        }
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      if (micBtn) micBtn.classList.add('recording');
+    } catch (err) {
+      console.error('[WCAI] mic access denied', err);
+      addMessage("I couldn't access your mic. You can type your message instead.", false);
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorder && isRecording) {
+      isRecording = false;
+      if (micBtn) micBtn.classList.remove('recording');
+      try { mediaRecorder.stop(); } catch (e) { /* noop */ }
+    }
+  }
+
+  if (micBtn) {
+    micBtn.addEventListener('click', () => {
+      if (isRecording) stopRecording(); else startRecording();
     });
   }
 
@@ -927,9 +1027,9 @@
     const name = collectedName ? collectedName.split(' ')[0] : '';
     let welcomeText;
     if (name) {
-      welcomeText = `Hey ${name}! Welcome to WePrintWraps. How can I help you today?`;
+      welcomeText = `Hey ${name}, I'm Ace with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.`;
     } else {
-      welcomeText = "Hey! Welcome to WePrintWraps. How can I help you today?";
+      welcomeText = "Hey, I'm Ace with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.";
     }
     typeMessage(welcomeMessage, welcomeText, 25);
   }

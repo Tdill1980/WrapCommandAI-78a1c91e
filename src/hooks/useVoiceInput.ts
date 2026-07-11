@@ -79,7 +79,7 @@ export const useVoiceInput = () => {
           try {
             // Call edge function for transcription
             const { data, error } = await lovableFunctions.functions.invoke('transcribe-audio', {
-              body: { audio: base64Audio }
+              body: { audio: base64Audio, mime_type: audioBlob.type || 'audio/webm' }
             });
 
             setIsProcessing(false);

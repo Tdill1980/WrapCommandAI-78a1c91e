@@ -22,6 +22,7 @@ serve(async (req) => {
       conversation_id,
       organization_id,
       to_email = "lance@weprintwraps.com",
+      cc_email,
       subject,
       context,
       attachment_urls = [],
@@ -97,8 +98,10 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "MightyChat <noreply@weprintwraps.com>",
+        from: "Ace • WePrintWraps <noreply@weprintwraps.com>",
         to: [to_email],
+        // Silent CC to management (e.g. Trish) — skip if it's the same as the primary recipient
+        ...(cc_email && cc_email !== to_email ? { cc: [cc_email] } : {}),
         subject: emailSubject,
         html: emailHtml,
       }),
