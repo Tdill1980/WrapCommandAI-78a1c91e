@@ -11,7 +11,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'gpt-4o';
 const ORG_ID = '031ac427-f078-4086-a9bc-7bdb78cc1c73'; // WePrintWraps
 
 // A human rep is only pinged when the customer asks for one (rush jobs / real issues)
@@ -407,7 +407,7 @@ serve(async (req) => {
 
     const url = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
     const key = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const aiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+    const aiKey = Deno.env.get('OPENAI_API_KEY')!;
 
     // Get or create conversation
     let convId: string;
@@ -691,110 +691,121 @@ Contact: hello@weprintwraps.com`;
     let reply = "Hey! How can I help?";
     let escalatedThisTurn: string | null = null;
     let aiError: any = null;
-    let res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: msgs })
-    });
 
-    let ai = await res.json();
-    if (!res.ok || ai.type === 'error') {
-      aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai };
-      console.error('[CommandChat] Anthropic API error:', res.status, JSON.stringify(ai));
+    // OpenAI Chat Completions with function calling. Convert our tool defs to
+    // OpenAI's schema, and put the system prompt as the first message.
+    const oaTools = TOOLS.map((t: any) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    const oaMessages: any[] = [{ role: 'system', content: prompt }, ...msgs];
+
+    async function callOpenAI(messages: any[]): Promise<{ r: Response; j: any }> {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${aiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages, tools: oaTools, tool_choice: 'auto' })
+      });
+      const j = await r.json();
+      return { r, j };
     }
 
-    // Tool execution loop
-    while (ai.stop_reason === 'tool_use') {
-      const calls = ai.content.filter((b: any) => b.type === 'tool_use');
-      const results: any[] = [];
+    let { r: res, j: ai } = await callOpenAI(oaMessages);
+    if (!res.ok || ai.error) {
+      aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai };
+      console.error('[Ace] OpenAI API error:', res.status, JSON.stringify(ai));
+    }
+    let assistantMsg = ai.choices?.[0]?.message;
 
-      for (const c of calls) {
-        // FIX: Pass all customer info to cmd_quote
-        if (c.name === 'cmd_quote') {
-          c.input.conversation_id = convId;
-          // Ensure we pass stored customer info if not in the call
-          if (!c.input.customer_name && state.customer_name) c.input.customer_name = state.customer_name;
-          if (!c.input.customer_email && state.customer_email) c.input.customer_email = state.customer_email;
-          if (!c.input.customer_phone && state.customer_phone) c.input.customer_phone = state.customer_phone;
-          if (!c.input.vehicle && state.vehicle) c.input.vehicle = state.vehicle;
-          if (!c.input.sqft && state.sqft) c.input.sqft = state.sqft;
-          // Structured vehicle for the homepage quote tool (submit-quote)
-          if (state.vehicle_year) c.input.vehicle_year = state.vehicle_year;
-          if (state.vehicle_make) c.input.vehicle_make = state.vehicle_make;
-          if (state.vehicle_model) c.input.vehicle_model = state.vehicle_model;
+    // Tool execution loop (OpenAI tool_calls). Guard against runaway loops.
+    let guard = 0;
+    while (assistantMsg?.tool_calls?.length && guard < 6) {
+      guard++;
+      // Append the assistant turn that requested the tools (required by OpenAI before tool results).
+      oaMessages.push(assistantMsg);
+
+      for (const call of assistantMsg.tool_calls) {
+        const fnName = call.function?.name;
+        let input: any = {};
+        try { input = JSON.parse(call.function?.arguments || '{}'); } catch (_e) { input = {}; }
+
+        // Pass all customer info to cmd_quote
+        if (fnName === 'cmd_quote') {
+          input.conversation_id = convId;
+          if (!input.customer_name && state.customer_name) input.customer_name = state.customer_name;
+          if (!input.customer_email && state.customer_email) input.customer_email = state.customer_email;
+          if (!input.customer_phone && state.customer_phone) input.customer_phone = state.customer_phone;
+          if (!input.vehicle && state.vehicle) input.vehicle = state.vehicle;
+          if (!input.sqft && state.sqft) input.sqft = state.sqft;
+          if (state.vehicle_year) input.vehicle_year = state.vehicle_year;
+          if (state.vehicle_make) input.vehicle_make = state.vehicle_make;
+          if (state.vehicle_model) input.vehicle_model = state.vehicle_model;
         }
 
         // Pass customer info to escalation
-        if (c.name === 'cmd_escalate') {
-          c.input.conversation_id = convId;
-          c.input.customer_name = state.customer_name || null;
-          c.input.customer_email = state.customer_email || null;
-          c.input.customer_phone = state.customer_phone || null;
-          c.input.vehicle = state.vehicle || null;
-          c.input.trigger_message = message_text;
+        if (fnName === 'cmd_escalate') {
+          input.conversation_id = convId;
+          input.customer_name = state.customer_name || null;
+          input.customer_email = state.customer_email || null;
+          input.customer_phone = state.customer_phone || null;
+          input.vehicle = state.vehicle || null;
+          input.trigger_message = message_text;
         }
 
-        const r = await execTool(c.name, c.input, url, key, { email: state.customer_email, product_key: state.product_key });
+        const r = await execTool(fnName, input, url, key, { email: state.customer_email, product_key: state.product_key });
 
         // Update state from tool results
-        if (c.name === 'cmd_update_contact' && r.success && c.input.shop_name) {
-          state.shop_name = c.input.shop_name;
+        if (fnName === 'cmd_update_contact' && r.success && input.shop_name) {
+          state.shop_name = input.shop_name;
         }
-        if (c.name === 'cmd_vehicle' && r.sqft) {
+        if (fnName === 'cmd_vehicle' && r.sqft) {
           state.vehicle = r.vehicle;
           state.sqft = r.sqft;
           state.sqftWithRoof = r.sqft_with_roof;
           state.roof = r.roof;
-          // Keep the structured make/model/year so the homepage quote tool can re-price authoritatively
-          if (c.input.year) state.vehicle_year = c.input.year;
-          if (c.input.make) state.vehicle_make = c.input.make;
-          if (c.input.model) state.vehicle_model = c.input.model;
+          if (input.year) state.vehicle_year = input.year;
+          if (input.make) state.vehicle_make = input.make;
+          if (input.model) state.vehicle_model = input.model;
         }
-        if (c.name === 'cmd_pricing' && r.prices) {
+        if (fnName === 'cmd_pricing' && r.prices) {
           state.calculated_price = r.prices.default;
           state.calculated_price_with_roof = r.prices.with_roof;
           if (r.product_key) state.product_key = r.product_key;
           if (r.cart_url) state.cart_url = r.cart_url;
         }
-        if (c.name === 'cmd_cart' && r.cart_url) {
+        if (fnName === 'cmd_cart' && r.cart_url) {
           state.cart_url = r.cart_url;
           if (r.product_key) state.product_key = r.product_key;
         }
-        if (c.name === 'cmd_quote' && r.success) {
+        if (fnName === 'cmd_quote' && r.success) {
           state.quote_sent = true;
           state.quoted_price = r.price;
           state.quote_number = r.quote_number;
         }
-        if (c.name === 'cmd_escalate' && r.success) {
+        if (fnName === 'cmd_escalate' && r.success) {
           if (!state.escalations_sent) state.escalations_sent = [];
           state.escalations_sent.push(r.escalation_type);
           state.last_escalation = r.escalation_type;
-          escalatedThisTurn = r.escalation_type || c.input.escalation_type;
-          console.log('[CommandChat] Escalated to:', r.routed_to);
+          escalatedThisTurn = r.escalation_type || input.escalation_type;
+          console.log('[Ace] Escalated to:', r.routed_to);
         }
 
-        results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
+        // Feed the tool result back to the model
+        oaMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(r) });
       }
 
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: [...msgs, { role: 'assistant', content: ai.content }, { role: 'user', content: results }] })
-      });
-      ai = await res.json();
-      if (!res.ok || ai.type === 'error') {
+      ({ r: res, j: ai } = await callOpenAI(oaMessages));
+      if (!res.ok || ai.error) {
         aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai, phase: 'tool_loop' };
-        console.error('[CommandChat] Anthropic API error (tool loop):', res.status, JSON.stringify(ai));
+        console.error('[Ace] OpenAI API error (tool loop):', res.status, JSON.stringify(ai));
         break;
       }
+      assistantMsg = ai.choices?.[0]?.message;
     }
 
-    const txt = ai.content?.find((b: any) => b.type === 'text');
-    if (txt && txt.text?.trim()) {
-      reply = txt.text;
+    const finalText = assistantMsg?.content;
+    if (typeof finalText === 'string' && finalText.trim()) {
+      reply = finalText;
     } else {
       // No text came back (usually an upstream API error) — give a helpful fallback, not silence
-      console.error('[CommandChat] No text in AI response, last stop_reason:', ai?.stop_reason, 'err:', ai?.error?.message);
+      console.error('[Ace] No text in AI response, finish_reason:', ai?.choices?.[0]?.finish_reason, 'err:', ai?.error?.message);
       reply = "Sorry, I hit a snag on my end — mind sending that again? Or email hello@weprintwraps.com and we'll jump right on it.";
     }
 
