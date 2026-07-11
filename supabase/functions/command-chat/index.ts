@@ -397,7 +397,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { session_id, message_text, customer_name, customer_email, customer_phone, geo, page_url } = body;
+    const { session_id, message_text, customer_name, customer_email, customer_phone, geo, page_url, debug } = body;
 
     console.log('[CommandChat] Received:', { session_id, message_text: message_text?.substring(0, 50), customer_name, customer_email, geo: geo?.city });
 
@@ -690,6 +690,7 @@ Contact: hello@weprintwraps.com`;
 
     let reply = "Hey! How can I help?";
     let escalatedThisTurn: string | null = null;
+    let aiError: any = null;
     let res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
@@ -698,6 +699,7 @@ Contact: hello@weprintwraps.com`;
 
     let ai = await res.json();
     if (!res.ok || ai.type === 'error') {
+      aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai };
       console.error('[CommandChat] Anthropic API error:', res.status, JSON.stringify(ai));
     }
 
@@ -781,6 +783,7 @@ Contact: hello@weprintwraps.com`;
       });
       ai = await res.json();
       if (!res.ok || ai.type === 'error') {
+        aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai, phase: 'tool_loop' };
         console.error('[CommandChat] Anthropic API error (tool loop):', res.status, JSON.stringify(ai));
         break;
       }
@@ -844,7 +847,7 @@ Contact: hello@weprintwraps.com`;
       console.error('[CommandChat] Operator notify failed:', smsErr);
     }
 
-    return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId }), {
+    return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId, ...(debug ? { ai_error: aiError } : {}) }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
