@@ -156,6 +156,18 @@ const operationsItems: NavigationItem[] = [
     )
   },
   {
+    name: "Ace Chat",
+    path: "/admin/chat-widget-demo",
+    icon: Sparkles,
+    roles: ["admin", "beta_shop"],
+    customRender: (
+      <span className="font-['Poppins',sans-serif] font-semibold">
+        <span className="text-white">Ace </span>
+        <span className="bg-gradient-to-r from-[#e6007e] to-[#7c3aed] bg-clip-text text-transparent">Chat</span>
+      </span>
+    )
+  },
+  {
     name: "Escalation Desk",
     path: "/escalations",
     icon: AlertTriangle,
