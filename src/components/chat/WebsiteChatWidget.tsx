@@ -26,8 +26,17 @@ export function WebsiteChatWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `website-${crypto.randomUUID()}`);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [geo, setGeo] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isRecording, isProcessing, startRecording, stopRecording } = useVoiceInput();
+
+  // Capture visitor geo once (mirrors the embed widget) so admin sees exact location.
+  useEffect(() => {
+    fetch("https://ipapi.co/json/")
+      .then((r) => r.json())
+      .then((g) => setGeo(g))
+      .catch(() => {});
+  }, []);
 
   // Push-to-talk: tap the mic to start, tap again to stop + transcribe into the input
   const handleMic = async () => {
@@ -88,6 +97,7 @@ export function WebsiteChatWidget() {
         message_text: text,
         page_url: window.location.href,
         referrer: document.referrer || "",
+        geo,
       });
 
       if (data?.reply || data?.message) {
