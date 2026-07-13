@@ -88,12 +88,17 @@ export function useWebsiteChats() {
     queryKey: ['website-page-chats'],
     queryFn: async (): Promise<ChatConversation[]> => {
       // Use WePrintWraps Supabase directly (qxllysilzonrlyoaomce)
+      const WPW_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
       const response = await fetch(
         'https://qxllysilzonrlyoaomce.supabase.co/functions/v1/get-website-chats',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            // Supabase gateway rejects the call (401) without these — this is why
+            // the admin sat on "Loading sessions…" with Loaded: 0.
+            'apikey': WPW_ANON,
+            'Authorization': `Bearer ${WPW_ANON}`,
           },
           body: JSON.stringify({ channel: 'website' })
         }
