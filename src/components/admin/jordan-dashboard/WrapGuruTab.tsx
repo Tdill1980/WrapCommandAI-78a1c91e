@@ -30,7 +30,6 @@ interface AnalysisRow {
   id: string;
   created_at: string;
   resolved: boolean | null;
-  status: string | null;
   action_payload: AnalysisPayload | null;
 }
 
@@ -54,7 +53,7 @@ export function WrapGuruTab() {
     queryFn: async (): Promise<AnalysisRow[]> => {
       const { data, error } = await supabase
         .from("ai_actions")
-        .select("id, created_at, resolved, status, action_payload")
+        .select("id, created_at, resolved, action_payload")
         .eq("action_type", "artwork_review")
         .order("created_at", { ascending: false })
         .limit(200);
@@ -155,7 +154,7 @@ export function WrapGuruTab() {
                           ) : <span className="text-green-500 text-xs">None flagged</span>}
                         </td>
                         <td className="py-2 px-3">
-                          <Badge variant={r.resolved ? "outline" : "secondary"}>{r.resolved ? "resolved" : (r.status || "pending")}</Badge>
+                          <Badge variant={r.resolved ? "outline" : "secondary"}>{r.resolved ? "resolved" : "pending"}</Badge>
                         </td>
                         <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
                       </tr>
