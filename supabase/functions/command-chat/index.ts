@@ -58,6 +58,20 @@ const WPW_TEAM: Record<string, { name: string; email: string; role: string; phon
 };
 const SILENT_CC = 'trish@weprintwraps.com';
 
+// Rough sqft by vehicle class — used ONLY when the sqft database has no exact
+// match, so the Wrap Guru can still give a ballpark instead of stalling.
+function estimateSqftByClass(make: string, model: string): number {
+  const s = `${make || ''} ${model || ''}`.toLowerCase();
+  if (/\b(sprinter|transit|promaster|express|savana|nv\s?\d|cargo van|box truck|step van)\b/.test(s)) return 320; // full-size/commercial van
+  if (/\b(f-?250|f-?350|f-?450|silverado\s?2500|silverado\s?3500|sierra\s?2500|ram\s?2500|ram\s?3500|super\s?duty|hd)\b/.test(s)) return 300; // HD truck
+  if (/\b(f-?150|silverado|sierra|ram|tundra|titan|ridgeline|colorado|canyon|tacoma|ranger|frontier|pickup|truck)\b/.test(s)) return 280; // pickup
+  if (/\b(suburban|tahoe|yukon|expedition|sequoia|armada|escalade|navigator|traverse|pilot|highlander|telluride|palisade|durango|4runner)\b/.test(s)) return 285; // large SUV
+  if (/\b(blazer|equinox|rav4|cr-?v|cx-?5|rogue|explorer|edge|escape|cherokee|wrangler|bronco|forester|outback|santa\s?fe|sorento|suv|crossover)\b/.test(s)) return 265; // mid SUV
+  if (/\b(minivan|odyssey|sienna|pacifica|carnival|caravan|van)\b/.test(s)) return 300; // minivan
+  if (/\b(coupe|mustang|camaro|challenger|corvette|miata|brz|gr86|two.?door)\b/.test(s)) return 210; // coupe
+  return 240; // default: mid-size car/sedan
+}
+
 // Volume discount tiers by total sqft
 function bulkDiscount(sqft: number): number {
   if (sqft >= 2500) return 0.20;
@@ -239,18 +253,27 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
         body: JSON.stringify({ year: input.year, make: input.make, model: input.model }),
       });
       const v = await r.json();
-      const sqft = typeof v.sqft === 'number' ? v.sqft : null;
-      const roof = v.panels?.roof ?? (sqft ? Math.round(sqft * 0.10) : null);
+      let sqft = typeof v.sqft === 'number' ? v.sqft : null;
+      let isEstimate = false;
+      // No exact DB match -> fall back to a class-based estimate so we can still quote.
+      if (sqft === null) {
+        sqft = estimateSqftByClass(input.make, input.model);
+        isEstimate = true;
+      }
+      const roof = (!isEstimate && v.panels?.roof) ? v.panels.roof : Math.round(sqft * 0.10);
       return {
         vehicle: `${input.year || ''} ${input.make || ''} ${input.model || ''}`.replace(/\s+/g, ' ').trim(),
         sqft,
         roof,
-        sqft_with_roof: sqft ? sqft + (roof || 0) : null,
-        needs_review: !!v.needs_review,
+        sqft_with_roof: sqft + roof,
+        is_estimate: isEstimate,
+        needs_review: !!v.needs_review || isEstimate,
       };
     } catch (e) {
       console.error('[Ace] vehicle-sqft failed:', e);
-      return { sqft: null, needs_review: true, error: 'vehicle lookup failed' };
+      // Even on failure, return a safe default so the chat never dead-ends.
+      const sqft = estimateSqftByClass(input.make, input.model);
+      return { vehicle: `${input.make || ''} ${input.model || ''}`.trim(), sqft, roof: Math.round(sqft * 0.10), sqft_with_roof: sqft + Math.round(sqft * 0.10), is_estimate: true, needs_review: true };
     }
   }
 
@@ -649,6 +672,11 @@ PRICING FLOW:
 3. Give price + relevant order URL in same message
 4. When they're ready to buy -> use cmd_cart to generate a real add-to-cart link and share it
 5. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+
+ALWAYS QUOTE — NEVER STALL:
+- cmd_vehicle ALWAYS returns a sqft (if the exact model isn't in our database it returns a close class-based estimate with is_estimate=true). So you can ALWAYS give a price. Do it.
+- If is_estimate is true, give the ballpark price and add one short line like: "that's a close estimate — we'll confirm exact square footage before we print." Then keep moving toward the order/quote.
+- NEVER reply that you "need more info on the square footage" or "need a review step." That's our job on the backend, not the customer's. Give the number.
 
 BUY / CART:
 - When a customer says they're ready, asks "how do I order", "add to cart", "checkout", or "where do I buy", call cmd_cart and give them the link.
