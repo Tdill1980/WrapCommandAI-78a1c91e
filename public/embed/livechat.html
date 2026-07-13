@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat with the Wrap Guru — WePrintWraps</title>
+  <meta name="description" content="Instant vehicle wrap pricing, cart links, and support from the Wrap Guru — WePrintWraps × RestyleProAI." />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(230,0,126,0.25), transparent 60%),
+        radial-gradient(900px 500px at 90% 20%, rgba(124,58,237,0.22), transparent 55%),
+        #0d0b1a;
+      color: #f3f2fb;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 22px 120px;
+    }
+    .badge {
+      font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+      color: #d9c8ff; opacity: .85; margin-bottom: 18px; font-weight: 600;
+    }
+    h1 {
+      font-size: clamp(30px, 6vw, 52px); line-height: 1.05; margin: 0 0 16px;
+      font-weight: 800; letter-spacing: -0.02em;
+    }
+    h1 .grad {
+      background: linear-gradient(135deg, #e6007e 0%, #7c3aed 55%, #3b82f6 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    p.sub { font-size: clamp(15px, 2.5vw, 19px); color: #b9b6cf; max-width: 620px; margin: 0 auto 30px; line-height: 1.6; }
+    .cta {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, #e6007e 0%, #7c3aed 100%);
+      color: #fff; font-weight: 700; font-size: 17px;
+      padding: 16px 34px; border: none; border-radius: 999px; cursor: pointer;
+      box-shadow: 0 10px 30px rgba(230,0,126,0.35); transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .cta:hover { transform: translateY(-2px); box-shadow: 0 14px 40px rgba(124,58,237,0.45); }
+    .feats { display: flex; flex-wrap: wrap; gap: 14px 26px; justify-content: center; margin-top: 34px; color: #cfcde3; font-size: 14px; }
+    .feats span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px rgba(74,222,128,.8); }
+    .foot { margin-top: 40px; font-size: 12px; color: #8a87a3; }
+  </style>
+</head>
+<body>
+  <div class="badge">WePrintWraps × RestyleProAI</div>
+  <h1>Chat with the <span class="grad">Wrap Guru</span></h1>
+  <p class="sub">Instant vehicle wrap pricing, a buy-now cart link, artwork help, and a real human when you need one. Ask anything — the Wrap Guru's got you.</p>
+  <button class="cta" id="wg-open">💬 Start Chatting</button>
+  <div class="feats">
+    <span><i class="dot"></i> Instant pricing</span>
+    <span><i class="dot"></i> Add-to-cart links</span>
+    <span><i class="dot"></i> Ships in 1–2 days</span>
+    <span><i class="dot"></i> Free shipping $750+</span>
+  </div>
+  <div class="foot">We print &amp; ship only — no installation. hello@weprintwraps.com</div>
+
+  <!-- Wrap Guru widget -->
+  <script
+    src="./chat-widget.js"
+    data-org="wpw" data-agent="wpw_support" data-mode="live" data-theme="dark-pro"></script>
+
+  <!-- Try to auto-open the bubble when the visitor clicks the hero CTA -->
+  <script>
+    document.getElementById('wg-open').addEventListener('click', function () {
+      var btn = document.querySelector('[id*="wcai"][class*="bubble"], .wcai-bubble, #wcai-bubble, [class*="wcai-launch"], [id*="wcai-ask"]');
+      if (btn) { btn.click(); return; }
+      // Fallback: click the first widget button we can find bottom-right
+      var candidates = document.querySelectorAll('[class*="wcai"] button, [id*="wcai"]');
+      if (candidates.length) candidates[0].click();
+    });
+  </script>
+</body>
+</html>
