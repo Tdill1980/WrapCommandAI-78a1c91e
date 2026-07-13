@@ -854,6 +854,40 @@ Contact: hello@weprintwraps.com`;
       console.log('[CommandChat] Synopsis generation failed:', e);
     }
 
+    // Forward captured lead/quote to RestylePro's pipeline (RestylePro owns the
+    // dashboard, orders, lead pipeline, and follow-ups). One list, not two.
+    // Deduped per (email + est_cost + quote#) so we don't repost the same lead.
+    if (state.customer_email) {
+      const est = state.calculated_price || state.quoted_price || null;
+      const sig = `${state.customer_email}|${est || ''}|${state.quote_number || ''}`;
+      if (state.last_lead_sig !== sig) {
+        try {
+          const RESTYLE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmYXBqZHl5dGh6eXZucGRlZ2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MzQzMDYsImV4cCI6MjA4NTIxMDMwNn0.OeFM3D0x-v8ie9KuVp1xfUKd2xv99ahtS4B6sC9SIyE';
+          await fetch('https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/wpw-calc-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': RESTYLE_ANON, 'Authorization': `Bearer ${RESTYLE_ANON}` },
+            body: JSON.stringify({
+              email: state.customer_email,
+              quote: {
+                vehicle: state.vehicle || null,
+                material: state.product_key || null,
+                total_sqft: state.sqftWithRoof || state.sqft || null,
+                est_cost: est,
+              },
+              intent: state.quote_sent ? 'quote_sent' : (est ? 'quote' : 'chat_lead'),
+              pagePath: page_url || null,
+              name: state.customer_name || null,
+              phone: state.customer_phone || null,
+            }),
+          });
+          state.last_lead_sig = sig;
+          console.log('[WrapGuru] Lead forwarded to RestylePro wpw-calc-lead:', state.customer_email);
+        } catch (leadErr) {
+          console.error('[WrapGuru] wpw-calc-lead push failed:', leadErr);
+        }
+      }
+    }
+
     // Save updated state with timestamp
     console.log('[CommandChat] Saving state:', JSON.stringify(state));
     await dbUpdate(url, key, 'conversations', `id=eq.${convId}`, {
