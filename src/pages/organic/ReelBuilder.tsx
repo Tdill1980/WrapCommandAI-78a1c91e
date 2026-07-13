@@ -307,7 +307,7 @@ export default function ReelBuilder() {
       setSuggestedCta(job.cta || null);
       setReelConcept(job.hook || 'Agent-created reel');
 
-      // ✅ Music: Creatomate requires a publicly reachable URL.
+      // ✅ Music: the ffmpeg renderer requires a publicly reachable URL.
       // For now we ONLY allow absolute http(s) URLs (no local /audio/* placeholders).
       const resolveMusicUrl = (j: ProducerJob): string | null => {
         const url = j.musicUrl || null;
@@ -1035,7 +1035,7 @@ export default function ReelBuilder() {
           blueprint: sceneBlueprint,
           music_url: audioUrl,
           creative_id: creative.id,
-          captions: captionsEngine.exportForCreatomate(),
+          captions: captionsEngine.exportForRender(),
         },
       });
 

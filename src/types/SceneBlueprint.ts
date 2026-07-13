@@ -4,7 +4,7 @@
  * This object is LAW. If it doesn't exist, NOTHING RENDERS.
  * No fallbacks. No defaults. No templates.
  * 
- * Creatomate/MightyEdit MUST render this EXACTLY as specified.
+ * The native ffmpeg renderer (MightyEdit) MUST render this EXACTLY as specified.
  */
 
 export interface SceneBlueprint {
@@ -29,7 +29,7 @@ export interface SceneBlueprint {
   brand?: string;
   
   // ============ TARGET LOCK (Select Format) ============
-  // These define the render contract - what Creatomate will produce
+  // These define the render contract - what the renderer will produce
   format?: 'reel' | 'story' | 'short';
   aspectRatio?: '9:16' | '1:1' | '16:9';
   templateId?: string;
@@ -74,7 +74,7 @@ export interface SceneBlueprintScene {
 }
 
 // ============ FORMAT → TEMPLATE MAPPING ============
-// Maps format + aspectRatio to Creatomate template IDs
+// Maps format + aspectRatio to renderer template IDs
 export const FORMAT_TEMPLATE_MAP: Record<string, { aspectRatio: '9:16' | '1:1' | '16:9'; templateId: string }> = {
   'reel': { aspectRatio: '9:16', templateId: 'ig_reel_v1' },
   'story': { aspectRatio: '9:16', templateId: 'ig_story_v1' },
@@ -141,7 +141,7 @@ export function validateBlueprint(blueprint: SceneBlueprint | null): { valid: bo
 
 /**
  * Creates a hardcoded test blueprint for verification
- * Use this to verify Creatomate/MightyEdit renders correctly BEFORE using AI
+ * Use this to verify the ffmpeg renderer renders correctly BEFORE using AI
  */
 export function createTestBlueprint(clips: Array<{ id: string; url: string; duration: number }>): SceneBlueprint {
   if (clips.length === 0) {
