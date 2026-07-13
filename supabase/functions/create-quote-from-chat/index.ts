@@ -535,8 +535,9 @@ serve(async (req) => {
     if (send_email && resendKey) {
       const vehicleDisplay = `${vehicle_year || ''} ${vehicle_make || ''} ${vehicle_model || ''}`.trim() || 'Your Vehicle';
       
-      // Cart URL - link to products page (can be enhanced with WooCommerce cart URL later)
-      const cartUrl = 'https://weprintwraps.com/our-products/';
+      // Real WooCommerce add-to-cart link (product + sqft as quantity) — same link Ace gives in chat.
+      const cartQty = Math.max(1, Math.round(sqft));
+      const cartUrl = `https://weprintwraps.com/cart/?add-to-cart=${product_id || 79}&quantity=${cartQty}`;
 
       // Generate vehicle render (WPW Pink, async but don't block email if it fails)
       let renderImageUrl = '';
