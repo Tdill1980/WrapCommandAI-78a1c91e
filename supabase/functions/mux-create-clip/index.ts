@@ -84,7 +84,9 @@ serve(async (req) => {
           end_time: end_time
         }],
         playback_policy: ["public"],
-        mp4_support: "standard"
+        // mp4_support is deprecated (Mux rejects it — see mux-upload's note).
+        // static_renditions is the current way to get a downloadable MP4.
+        static_renditions: [{ resolution: "highest" }]
       })
     });
 
@@ -95,13 +97,31 @@ serve(async (req) => {
     }
 
     const assetData = await createAssetResponse.json();
-    const newAsset = assetData.data;
-    
+    let newAsset = assetData.data;
+
     console.log(`[mux-create-clip] Created new asset: ${newAsset.id}`);
+
+    // Poll until the clip asset is ready (max ~90s). Previously we returned
+    // immediately while status was "preparing", so Download/Preview 404'd.
+    const deadline = Date.now() + 90_000;
+    while (newAsset.status !== "ready" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const statusRes = await fetch(`https://api.mux.com/video/v1/assets/${newAsset.id}`, {
+        headers: { "Authorization": `Basic ${muxAuth}` },
+      });
+      if (statusRes.ok) {
+        const statusJson = await statusRes.json();
+        newAsset = statusJson.data;
+        if (newAsset.status === "errored") {
+          throw new Error(`Mux clip asset errored: ${JSON.stringify(newAsset.errors || {})}`);
+        }
+      }
+    }
+    console.log(`[mux-create-clip] Asset ${newAsset.id} status: ${newAsset.status}`);
 
     // Get playback ID from the new asset
     const newPlaybackId = newAsset.playback_ids?.[0]?.id;
-    
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -109,12 +129,13 @@ serve(async (req) => {
         asset_id: newAsset.id,
         playback_id: newPlaybackId,
         playback_url: newPlaybackId ? `https://stream.mux.com/${newPlaybackId}.m3u8` : null,
-        download_url: newPlaybackId ? `https://stream.mux.com/${newPlaybackId}/high.mp4` : null,
+        download_url: newPlaybackId ? `https://stream.mux.com/${newPlaybackId}/highest.mp4` : null,
         thumbnail_url: newPlaybackId ? `https://image.mux.com/${newPlaybackId}/thumbnail.jpg` : null,
         start_time,
         end_time,
         duration,
         status: newAsset.status,
+        ready: newAsset.status === "ready",
         name: output_name || `Clip ${start_time}s-${end_time}s`
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

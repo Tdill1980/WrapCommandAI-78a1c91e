@@ -7,6 +7,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Social page URLs (IG/TikTok/YouTube/...) are HTML documents, not video files.
+// They must be resolved to a direct media URL before fetching.
+function isSocialMediaUrl(url: string): boolean {
+  return [
+    /youtube\.com/i, /youtu\.be/i, /tiktok\.com/i,
+    /instagram\.com/i, /twitter\.com/i, /x\.com/i, /vimeo\.com/i,
+  ].some((p) => p.test(url));
+}
+
+// Resolve a social page URL to a direct downloadable video URL via Cobalt
+// (same service video-transcribe uses for audio extraction).
+async function resolveSocialVideoUrl(pageUrl: string): Promise<string> {
+  const response = await fetch("https://api.cobalt.tools/", {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: pageUrl,
+      downloadMode: "auto",
+      videoQuality: "720",
+      filenameStyle: "basic",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Video extraction service unavailable (${response.status})`);
+  }
+  const data = await response.json();
+  if (data.status === "error") {
+    throw new Error(data.error?.code || data.text || "Failed to extract video from link");
+  }
+  if ((data.status === "tunnel" || data.status === "redirect" || data.status === "stream") && data.url) {
+    return data.url;
+  }
+  if (data.status === "picker" && data.picker?.length > 0) {
+    const videoOption = data.picker.find((p: { type?: string; url?: string }) => p.type === "video") || data.picker[0];
+    if (videoOption?.url) return videoOption.url;
+  }
+  throw new Error("Could not extract a video from that link");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -111,26 +151,41 @@ This is for vehicle wrap industry content creation.`;
     let videoMime = "video/mp4";
     const MAX_BYTES = 20 * 1024 * 1024;
     try {
-      const vidRes = await fetch(videoUrl);
+      // A pasted IG/TikTok/YouTube link is an HTML page — resolve it to the
+      // actual video file first. Without this, we were fetching HTML.
+      let fetchUrl = videoUrl;
+      if (isSocialMediaUrl(videoUrl)) {
+        console.log("[analyze-inspo-video] resolving social URL via Cobalt:", videoUrl);
+        fetchUrl = await resolveSocialVideoUrl(videoUrl);
+      }
+
+      const vidRes = await fetch(fetchUrl);
       if (vidRes.ok) {
-        const lenHeader = vidRes.headers.get("content-length");
-        const approxLen = lenHeader ? parseInt(lenHeader, 10) : 0;
-        if (!approxLen || approxLen <= MAX_BYTES) {
-          const buf = new Uint8Array(await vidRes.arrayBuffer());
-          if (buf.byteLength <= MAX_BYTES) {
-            const ct = vidRes.headers.get("content-type")?.split(";")[0] || "video/mp4";
-            videoMime = /^video\//.test(ct) ? ct : "video/mp4";
-            let binary = "";
-            const chunk = 0x8000;
-            for (let i = 0; i < buf.length; i += chunk) {
-              binary += String.fromCharCode.apply(null, buf.subarray(i, i + chunk) as unknown as number[]);
-            }
-            videoBase64 = btoa(binary);
-          } else {
-            console.warn("[analyze-inspo-video] video too large to analyze inline:", buf.byteLength);
-          }
+        const ct = vidRes.headers.get("content-type")?.split(";")[0]?.trim() || "";
+        // HARD GATE: only accept real video responses. Relabeling text/html as
+        // video/mp4 sent HTML bytes to Gemini and let fabricated analyses
+        // through the videoWasSeen gate.
+        if (!/^video\//.test(ct)) {
+          console.warn("[analyze-inspo-video] non-video content-type, skipping:", ct || "(none)");
         } else {
-          console.warn("[analyze-inspo-video] video content-length too large:", approxLen);
+          videoMime = ct;
+          const lenHeader = vidRes.headers.get("content-length");
+          const approxLen = lenHeader ? parseInt(lenHeader, 10) : 0;
+          if (!approxLen || approxLen <= MAX_BYTES) {
+            const buf = new Uint8Array(await vidRes.arrayBuffer());
+            if (buf.byteLength <= MAX_BYTES) {
+              let binary = "";
+              const chunk = 0x8000;
+              for (let i = 0; i < buf.length; i += chunk) {
+                binary += String.fromCharCode.apply(null, buf.subarray(i, i + chunk) as unknown as number[]);
+              }
+              videoBase64 = btoa(binary);
+            } else {
+              console.warn("[analyze-inspo-video] video too large to analyze inline:", buf.byteLength);
+            }
+          } else {
+            console.warn("[analyze-inspo-video] video content-length too large:", approxLen);
+          }
         }
       } else {
         console.warn("[analyze-inspo-video] could not fetch video:", vidRes.status);

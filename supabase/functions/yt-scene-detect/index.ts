@@ -50,7 +50,7 @@ serve(async (req) => {
   }
 
   try {
-    const { job_id, transcript, video_url } = await req.json();
+    const { job_id, transcript, video_url, video_duration } = await req.json();
 
     // Allow either transcript or video_url
     if (!transcript && !video_url) {
@@ -67,12 +67,15 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // If no transcript but we have video_url, try to transcribe first
+    // If no transcript but we have video_url, try to transcribe first.
+    // video-transcribe accepts { video_url } and returns { transcript }.
+    // (transcribe-audio requires base64 { audio } — calling it with a URL
+    // always failed silently, which is why scene detection never worked.)
     let transcriptText = transcript || "";
     if (!transcriptText && video_url) {
       try {
-        const transcribeRes = await supabase.functions.invoke("transcribe-audio", {
-          body: { video_url }
+        const transcribeRes = await supabase.functions.invoke("video-transcribe", {
+          body: { video_url, include_timestamps: false }
         });
         transcriptText = transcribeRes.data?.transcript || "";
         console.log(`Got transcript of ${transcriptText.length} chars from video`);
@@ -81,20 +84,31 @@ serve(async (req) => {
       }
     }
 
-    // If still no transcript, return basic time-based scenes
+    // If still no transcript, return basic time-based scenes scaled to the
+    // actual video length (previously hardcoded 0–70s regardless of duration).
     if (!transcriptText) {
       console.log("No transcript available, returning basic scene structure");
+      const dur = Number(video_duration) > 0 ? Number(video_duration) : 70;
+      const seg = dur / 5;
+      const toMMSS = (s: number) =>
+        `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+      const types = ["hook", "value", "reveal", "value", "cta"];
+      const labels = ["Opening hook", "Main content", "Key moment", "Details", "Closing"];
+      const energies = ["high", "medium", "high", "medium", "medium"];
+      const scores = [70, 60, 75, 55, 65];
+      const fallbackScenes = Array.from({ length: 5 }, (_, i) => ({
+        id: i + 1,
+        start: toMMSS(i * seg),
+        end: toMMSS(Math.min((i + 1) * seg, dur)),
+        start_seconds: Math.round(i * seg * 10) / 10,
+        end_seconds: Math.round(Math.min((i + 1) * seg, dur) * 10) / 10,
+        type: types[i],
+        score: scores[i],
+        text: labels[i],
+        energy_level: energies[i],
+      }));
       return new Response(
-        JSON.stringify({
-          success: true,
-          scenes: [
-            { id: 1, start: 0, end: 10, type: "hook", score: 70, text: "Opening hook", energy_level: "high" },
-            { id: 2, start: 10, end: 25, type: "value", score: 60, text: "Main content", energy_level: "medium" },
-            { id: 3, start: 25, end: 40, type: "reveal", score: 75, text: "Key moment", energy_level: "high" },
-            { id: 4, start: 40, end: 55, type: "value", score: 55, text: "Details", energy_level: "medium" },
-            { id: 5, start: 55, end: 70, type: "cta", score: 65, text: "Closing", energy_level: "medium" },
-          ]
-        }),
+        JSON.stringify({ success: true, scenes: fallbackScenes, analysis: { scenes: fallbackScenes } }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -168,8 +182,11 @@ serve(async (req) => {
       });
     }
 
+    // Return scenes at the TOP LEVEL too — AutoSplit reads `scenes`, the
+    // YouTube editor reads `analysis`. Previously the AI-success path only
+    // returned `analysis.scenes`, so AutoSplit silently discarded real results.
     return new Response(
-      JSON.stringify({ success: true, analysis: analysisData }),
+      JSON.stringify({ success: true, scenes: analysisData.scenes || [], analysis: analysisData }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

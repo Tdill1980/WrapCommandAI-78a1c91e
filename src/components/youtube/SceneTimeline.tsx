@@ -7,11 +7,14 @@ interface SceneTimelineProps {
 }
 
 export function SceneTimeline({ scenes, onSceneClick, selectedSceneId }: SceneTimelineProps) {
+  const DEFAULT_GRADIENT = "from-slate-500 to-slate-600";
   const colors: Record<string, string> = {
     hook: "from-pink-500 to-orange-500",
     value: "from-blue-500 to-purple-500",
     reveal: "from-green-400 to-emerald-600",
     cta: "from-yellow-500 to-red-500",
+    testimonial: "from-cyan-500 to-blue-600",
+    filler: "from-slate-500 to-slate-600",
   };
 
   const glowColors: Record<string, string> = {
@@ -19,7 +22,11 @@ export function SceneTimeline({ scenes, onSceneClick, selectedSceneId }: SceneTi
     value: "shadow-blue-500/30",
     reveal: "shadow-green-500/30",
     cta: "shadow-yellow-500/30",
+    testimonial: "shadow-cyan-500/30",
+    filler: "shadow-slate-500/30",
   };
+  const gradientFor = (type: string) => colors[type] || DEFAULT_GRADIENT;
+  const glowFor = (type: string) => glowColors[type] || "shadow-slate-500/30";
 
   return (
     <div className="mt-6 bg-card p-5 rounded-xl border border-border">
@@ -31,10 +38,10 @@ export function SceneTimeline({ scenes, onSceneClick, selectedSceneId }: SceneTi
             key={scene.id}
             onClick={() => onSceneClick?.(scene)}
             className={`
-              min-w-[140px] bg-gradient-to-r ${colors[scene.type]} 
+              min-w-[140px] bg-gradient-to-r ${gradientFor(scene.type)}
               rounded-xl p-3 text-white text-sm cursor-pointer
               transition-all duration-200 hover:scale-105
-              shadow-lg ${glowColors[scene.type]}
+              shadow-lg ${glowFor(scene.type)}
               ${selectedSceneId === scene.id ? "ring-2 ring-white ring-offset-2 ring-offset-background" : ""}
             `}
           >
@@ -51,7 +58,7 @@ export function SceneTimeline({ scenes, onSceneClick, selectedSceneId }: SceneTi
           {scenes.map((scene, i) => (
             <div 
               key={scene.id}
-              className={`h-full bg-gradient-to-r ${colors[scene.type]} flex-1`}
+              className={`h-full bg-gradient-to-r ${gradientFor(scene.type)} flex-1`}
               style={{ 
                 marginRight: i < scenes.length - 1 ? "2px" : "0",
                 opacity: selectedSceneId === scene.id ? 1 : 0.6
