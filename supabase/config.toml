@@ -463,3 +463,9 @@ verify_jwt = false
 
 [functions.process-portfolio-content]
 verify_jwt = false
+
+[functions.backfill-missing-orders]
+verify_jwt = false
+
+[functions.shopflow-freshness-alarm]
+verify_jwt = false
