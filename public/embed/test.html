@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Ace — Test Page (not the live site)</title>
+  <title>Wrap Guru — Test Page (not the live site)</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -53,16 +53,16 @@
   </style>
 </head>
 <body>
-  <div class="banner">🧪 ACE TEST PAGE — this is NOT weprintwraps.com. Safe to poke. No real customers here.</div>
+  <div class="banner">🧪 WRAP GURU TEST PAGE — this is NOT weprintwraps.com. Safe to poke. No real customers here.</div>
   <div class="wrap">
-    <h1>Ace end-to-end test <span class="pill">test mode</span></h1>
+    <h1>Wrap Guru end-to-end test <span class="pill">test mode</span></h1>
     <p class="sub">The chat bubble is bottom-right. Escalations are temporarily routed to your inbox only. Use <strong>your own email</strong> as the customer so quotes come to you.</p>
 
     <div class="card">
       <h2>Run this script in the chat</h2>
       <ol>
         <li>“How much to wrap a 2021 Ford Transit?”
-          <span class="verify">✓ Ace answers with a price → chat works + vehicle/pricing tools fire</span>
+          <span class="verify">✓ Wrap Guru answers with a price → chat works + vehicle/pricing tools fire</span>
         </li>
         <li>“My name is Trish, email trish@weprintwraps.com, phone 623-313-5418”
           <span class="verify">✓ email saved → check <code>/website-admin</code> contact + <code>contacts</code> table</span>
@@ -71,7 +71,7 @@
           <span class="verify">✓ quote email hits your inbox AND shows in <code>/website-admin</code> → Quotes tab</span>
         </li>
         <li>“Great, add it to my cart”
-          <span class="verify">✓ Ace returns a <code>weprintwraps.com/cart/?add-to-cart=…</code> link — click it, confirm it lands in the cart</span>
+          <span class="verify">✓ Wrap Guru returns a <code>weprintwraps.com/cart/?add-to-cart=…</code> link — click it, confirm it lands in the cart</span>
         </li>
         <li>Tap the 🎤 mic, say a sentence
           <span class="verify">✓ your words appear in the input box → transcription works</span>
@@ -84,13 +84,13 @@
 
     <div class="card">
       <h2>Then verify the transcript</h2>
-      <p class="hint">Open <code>/website-admin</code> <span class="arrow">→</span> Website Chat tab <span class="arrow">→</span> your conversation. Every message you sent and every Ace reply should be there in order — nothing dropped.</p>
+      <p class="hint">Open <code>/website-admin</code> <span class="arrow">→</span> Website Chat tab <span class="arrow">→</span> your conversation. Every message you sent and every Wrap Guru reply should be there in order — nothing dropped.</p>
     </div>
 
     <p class="hint">When everything passes: set <code>ESCALATION_TEST_OVERRIDE = null</code> in <code>command-chat</code>, redeploy, then paste the embed snippet on weprintwraps.com.</p>
   </div>
 
-  <!-- Ace widget — same standalone script your live site would use -->
+  <!-- Wrap Guru widget — same standalone script your live site would use -->
   <script
     src="./chat-widget.js"
     data-org="wpw"
