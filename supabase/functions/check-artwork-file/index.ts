@@ -171,8 +171,8 @@ serve(async (req) => {
       .from('ai_actions')
       .insert({
         action_type: 'artwork_review',
+        organization_id: '031ac427-f078-4086-a9bc-7bdb78cc1c73', // WePrintWraps — required NOT NULL col
         priority: 'high',
-        status: 'pending',
         resolved: false,
         action_payload: {
           file_url,
@@ -193,9 +193,9 @@ serve(async (req) => {
             size_assessment: assessment.sizeAssessment
           },
           response_options: ['design_fee', 'wrap_quote'],
-          needs_response: true
-        },
-        preview: `Artwork review: ${file_name} (${formatFileSize(file_size || 0)}) - Score: ${assessment.score}/10`
+          needs_response: true,
+          summary: `Artwork review: ${file_name} (${formatFileSize(file_size || 0)}) - Score: ${assessment.score}/10`
+        }
       })
       .select()
       .single();
@@ -303,6 +303,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         action_id: actionRecord?.id || null,
+        ...(body.debug ? { insert_error: actionError?.message || actionError || null } : {}),
         preliminary_check: {
           score: assessment.score,
           score_emoji: scoreEmoji,
