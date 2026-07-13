@@ -56,6 +56,21 @@ jobs:
             exit 0
           fi
 
+          # Set RESTYLEPRO_API_KEY from the slugs input (value passed at dispatch).
+          if [ "$METHOD" = "set-restylepro-key" ]; then
+            if [ -z "${SLUGS:-}" ]; then echo "::error::pass the key in the 'slugs' input"; exit 1; fi
+            FP="$(printf '%s' "$SLUGS" | cut -c1-9)…$(printf '%s' "$SLUGS" | rev | cut -c1-4 | rev)"
+            echo "Setting RESTYLEPRO_API_KEY on ${PROJECT_REF} (fingerprint ${FP})"
+            code=$(curl -sS -o /tmp/out -w '%{http_code}' -X POST \
+              "https://api.supabase.com/v1/projects/${PROJECT_REF}/secrets" \
+              -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+              -d "$(jq -nc --arg v "$SLUGS" '[{name:"RESTYLEPRO_API_KEY", value:$v}]')")
+            if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "204" ]; then
+              echo "✅ RESTYLEPRO_API_KEY set on ${PROJECT_REF}"
+            else echo "::error::Set secret returned HTTP $code: $(cat /tmp/out)"; exit 1; fi
+            exit 0
+          fi
+
           if [ "$METHOD" = "list" ]; then
             echo "Deployed functions on ${PROJECT_REF}:"
             curl -sS -H "Authorization: Bearer ${TOKEN}" "$BASE" \

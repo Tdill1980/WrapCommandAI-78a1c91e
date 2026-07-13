@@ -1,0 +1,52 @@
+# Quote retargeting / follow-up scheduler.
+# The retargeting functions existed but nothing ever invoked them, so no
+# follow-ups, conversion reconciliation, or orphan-lead alerts ran automatically.
+# This is the missing scheduler.
+#
+# SAFE (no customer emails): run-orphan-quote-check (flags quote-intent chats with
+#   no quote + alerts the team) and reconcile-quote-conversions (marks quotes paid).
+# CUSTOMER-FACING: run-quote-followups sends follow-up emails to real quote
+#   customers. It is included below but commented until explicitly enabled.
+#
+# NOTE: schedule: only runs from the default branch (main). Merging this activates it.
+name: Quote Retargeting (scheduled)
+
+on:
+  schedule:
+    - cron: "23 * * * *"    # hourly at :23 — orphan-lead alerts
+    - cron: "41 */6 * * *"  # every 6h — reconcile conversions
+  workflow_dispatch:
+    inputs:
+      include_followup_emails:
+        description: "Also send customer follow-up emails (run-quote-followups)? true/false"
+        required: false
+        default: "false"
+
+jobs:
+  retarget:
+    runs-on: ubuntu-latest
+    env:
+      BASE: "https://qxllysilzonrlyoaomce.supabase.co/functions/v1"
+      # Public anon key (same one the site uses) — these functions are callable with it.
+      ANON: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM"
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Call retargeting functions
+        run: |
+          set +e
+          call() {
+            local fn="$1"
+            echo "::group::$fn"
+            code=$(curl -sS -o /tmp/o -w '%{http_code}' -X POST "$BASE/$fn" \
+              -H "Content-Type: application/json" -H "apikey: $ANON" \
+              -H "Authorization: Bearer $ANON" -H "x-cron-secret: ${CRON_SECRET:-}" -d '{}')
+            echo "$fn -> HTTP $code"; head -c 500 /tmp/o; echo
+            echo "::endgroup::"
+          }
+          # Safe, non-emailing jobs always run:
+          call run-orphan-quote-check
+          call reconcile-quote-conversions
+          # Customer follow-up emails: only on manual dispatch with the flag true.
+          if [ "${{ github.event.inputs.include_followup_emails }}" = "true" ]; then
+            call run-quote-followups
+          fi
