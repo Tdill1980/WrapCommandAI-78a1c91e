@@ -7,6 +7,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Social page URLs (IG/TikTok/YouTube/...) are HTML documents, not video files.
+// They must be resolved to a direct media URL before fetching.
+function isSocialMediaUrl(url: string): boolean {
+  return [
+    /youtube\.com/i, /youtu\.be/i, /tiktok\.com/i,
+    /instagram\.com/i, /twitter\.com/i, /x\.com/i, /vimeo\.com/i,
+  ].some((p) => p.test(url));
+}
+
+// Resolve a social page URL to a direct downloadable video URL via Cobalt
+// (same service video-transcribe uses for audio extraction).
+async function resolveSocialVideoUrl(pageUrl: string): Promise<string> {
+  const response = await fetch("https://api.cobalt.tools/", {
+    method: "POST",
+    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: pageUrl,
+      downloadMode: "auto",
+      videoQuality: "720",
+      filenameStyle: "basic",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Video extraction service unavailable (${response.status})`);
+  }
+  const data = await response.json();
+  if (data.status === "error") {
+    throw new Error(data.error?.code || data.text || "Failed to extract video from link");
+  }
+  if ((data.status === "tunnel" || data.status === "redirect" || data.status === "stream") && data.url) {
+    return data.url;
+  }
+  if (data.status === "picker" && data.picker?.length > 0) {
+    const videoOption = data.picker.find((p: { type?: string; url?: string }) => p.type === "video") || data.picker[0];
+    if (videoOption?.url) return videoOption.url;
+  }
+  throw new Error("Could not extract a video from that link");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -103,20 +143,75 @@ Based on the URL and platform, provide a detailed style breakdown focusing on:
 
 This is for vehicle wrap industry content creation.`;
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
+    // Fetch the actual video so Gemini can SEE it. Passing only the URL as text
+    // makes the model hallucinate the entire breakdown — and that fabricated output
+    // was being written straight into the org style profile. Gemini decodes video
+    // natively via inline_data (inline cap ~20MB).
+    let videoBase64: string | null = null;
+    let videoMime = "video/mp4";
+    const MAX_BYTES = 20 * 1024 * 1024;
+    try {
+      // A pasted IG/TikTok/YouTube link is an HTML page — resolve it to the
+      // actual video file first. Without this, we were fetching HTML.
+      let fetchUrl = videoUrl;
+      if (isSocialMediaUrl(videoUrl)) {
+        console.log("[analyze-inspo-video] resolving social URL via Cobalt:", videoUrl);
+        fetchUrl = await resolveSocialVideoUrl(videoUrl);
+      }
+
+      const vidRes = await fetch(fetchUrl);
+      if (vidRes.ok) {
+        const ct = vidRes.headers.get("content-type")?.split(";")[0]?.trim() || "";
+        // HARD GATE: only accept real video responses. Relabeling text/html as
+        // video/mp4 sent HTML bytes to Gemini and let fabricated analyses
+        // through the videoWasSeen gate.
+        if (!/^video\//.test(ct)) {
+          console.warn("[analyze-inspo-video] non-video content-type, skipping:", ct || "(none)");
+        } else {
+          videoMime = ct;
+          const lenHeader = vidRes.headers.get("content-length");
+          const approxLen = lenHeader ? parseInt(lenHeader, 10) : 0;
+          if (!approxLen || approxLen <= MAX_BYTES) {
+            const buf = new Uint8Array(await vidRes.arrayBuffer());
+            if (buf.byteLength <= MAX_BYTES) {
+              let binary = "";
+              const chunk = 0x8000;
+              for (let i = 0; i < buf.length; i += chunk) {
+                binary += String.fromCharCode.apply(null, buf.subarray(i, i + chunk) as unknown as number[]);
+              }
+              videoBase64 = btoa(binary);
+            } else {
+              console.warn("[analyze-inspo-video] video too large to analyze inline:", buf.byteLength);
+            }
+          } else {
+            console.warn("[analyze-inspo-video] video content-length too large:", approxLen);
+          }
+        }
+      } else {
+        console.warn("[analyze-inspo-video] could not fetch video:", vidRes.status);
+      }
+    } catch (e) {
+      console.warn("[analyze-inspo-video] video fetch failed:", e instanceof Error ? e.message : String(e));
+    }
+
+    const videoWasSeen = !!videoBase64;
+
+    const parts: any[] = [{ text: `${systemPrompt}\n\n${userPrompt}` }];
+    if (videoBase64) {
+      parts.push({ inline_data: { mime_type: videoMime, data: videoBase64 } });
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: { temperature: 0.2 },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -139,10 +234,12 @@ This is for vehicle wrap industry content creation.`;
     }
 
     const aiData = await response.json();
-    const content = aiData.choices?.[0]?.message?.content || "";
+    const content =
+      aiData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
 
     // Parse JSON from response
     let analysis;
+    let parsedOk = true;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -152,6 +249,7 @@ This is for vehicle wrap industry content creation.`;
       }
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
+      parsedOk = false;
       // Return a default analysis structure
       analysis = {
         pacing: { cutsPerSecond: 1, averageClipLength: 3, rhythm: "medium" },
@@ -188,7 +286,10 @@ This is for vehicle wrap industry content creation.`;
         title: `${platform || "Video"} Analysis - ${new Date().toLocaleDateString()}`,
       });
 
-      // UPDATE ORGANIZATION STYLE PROFILE for video rendering
+      // UPDATE ORGANIZATION STYLE PROFILE for video rendering — ONLY when the
+      // video was actually analyzed AND parsed. Never overwrite a real style
+      // profile with fabricated defaults from a URL the model never saw.
+      if (videoWasSeen && parsedOk) {
       // Extract rendering-specific settings from the analysis
       const styleUpdate = {
         font_headline: analysis.typography?.font_headline || "Bebas Neue",
@@ -210,10 +311,15 @@ This is for vehicle wrap industry content creation.`;
 
       console.log("[analyze-inspo-video] Updating organization style profile:", styleUpdate);
       await updateOrganizationStyle(organizationId, styleUpdate, videoUrl);
+      } else {
+        console.warn(
+          `[analyze-inspo-video] Skipping org style update (videoWasSeen=${videoWasSeen}, parsedOk=${parsedOk}) — not overwriting profile with an ungrounded guess.`
+        );
+      }
     }
 
     return new Response(
-      JSON.stringify({ success: true, analysis }),
+      JSON.stringify({ success: true, analysis, videoWasSeen }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

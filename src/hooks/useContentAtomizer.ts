@@ -85,31 +85,55 @@ export function useContentAtomizer(organizationId?: string) {
       if (error) throw error;
       return data;
     },
-    onSuccess: async (data) => {
-      if (data.atoms && data.atoms.length > 0) {
-        // Save atoms to database
-        const atomsToInsert = data.atoms.map((atom: any) => ({
-          organization_id: organizationId,
-          source_type: atom.source_type || "other",
-          atom_type: atom.atom_type || "idea",
-          original_text: atom.original_text,
-          processed_text: atom.processed_text,
-          tags: atom.tags || [],
-          ad_angles: atom.ad_angles || [],
-          suggested_formats: atom.suggested_formats || [],
-        }));
-
-        const { error } = await contentDB.from("content_atoms").insert(atomsToInsert);
-        if (error) {
-          console.error("Failed to save atoms:", error);
-        }
-
-        queryClient.invalidateQueries({ queryKey: ["content-atoms"] });
+    onSuccess: async (data, variables) => {
+      // Empty result = the AI didn't produce atoms. Surface it — previously
+      // this silently did nothing while the page cleared the user's text.
+      if (!data.atoms || data.atoms.length === 0) {
         toast({
-          title: "Content Atomized",
-          description: `Created ${data.atoms.length} content atoms`,
+          title: "No atoms found",
+          description: "The AI couldn't break this content down — try different or longer text",
+          variant: "destructive",
         });
+        throw new Error("No atoms generated");
       }
+
+      // Save atoms to database.
+      // - source_type comes from the user's selection (the AI output has no
+      //   per-atom source_type, so the old `atom.source_type` was always undefined).
+      // - product_match (a product NAME from the AI) is resolved to product_id.
+      const atomsToInsert = data.atoms.map((atom: any) => ({
+        organization_id: organizationId,
+        source_type: variables.sourceType || "other",
+        atom_type: atom.atom_type || "idea",
+        original_text: atom.original_text,
+        processed_text: atom.processed_text,
+        tags: atom.tags || [],
+        product_id: atom.product_match
+          ? products.find((p) =>
+              p.product_name.toLowerCase() === String(atom.product_match).toLowerCase()
+            )?.id ?? null
+          : null,
+        ad_angles: atom.ad_angles || [],
+        suggested_formats: atom.suggested_formats || [],
+      }));
+
+      const { error } = await contentDB.from("content_atoms").insert(atomsToInsert);
+      if (error) {
+        // Failed save must NOT show the success toast (it used to).
+        console.error("Failed to save atoms:", error);
+        toast({
+          title: "Atomized, but saving failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        throw error;
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["content-atoms"] });
+      toast({
+        title: "Content Atomized",
+        description: `Created ${data.atoms.length} content atoms`,
+      });
       return data;
     },
     onError: (error) => {
@@ -151,16 +175,22 @@ export function useContentAtomizer(organizationId?: string) {
     },
   });
 
-  // Mark atom as used
+  // Mark atom as used (real increment — the old code always wrote 1)
   const markAsUsed = useCallback(async (atomId: string) => {
+    const { data: current } = await contentDB
+      .from("content_atoms")
+      .select("use_count")
+      .eq("id", atomId)
+      .maybeSingle();
+
     const { error } = await contentDB
       .from("content_atoms")
-      .update({ 
-        is_used: true, 
-        use_count: supabase.rpc ? 1 : 1 
+      .update({
+        is_used: true,
+        use_count: (current?.use_count ?? 0) + 1,
       })
       .eq("id", atomId);
-    
+
     if (!error) {
       queryClient.invalidateQueries({ queryKey: ["content-atoms"] });
     }

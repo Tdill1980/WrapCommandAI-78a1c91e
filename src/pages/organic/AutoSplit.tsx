@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,25 @@ import {
   Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { downloadFromUrl, generateFilename } from "@/lib/downloadUtils";
+import { downloadToDevice, generateFilename } from "@/lib/downloadUtils";
+
+/** Read a video File's duration (seconds) from its metadata. 0 if unreadable. */
+function getVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const url = URL.createObjectURL(file);
+    v.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(v.duration) ? v.duration : 0);
+    };
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(0);
+    };
+    v.src = url;
+  });
+}
 
 interface MicroReel {
   id: string;
@@ -56,6 +74,22 @@ export default function AutoSplit() {
   const [reels, setReels] = useState<MicroReel[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [renderingIds, setRenderingIds] = useState<Set<string>>(new Set());
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  // Cache the Mux asset for the source video so Render All doesn't re-upload
+  // the same file once per reel (5 duplicate assets + minutes of waiting).
+  const muxAssetRef = useRef<{ assetId: string; playbackId?: string } | null>(null);
+
+  // Stable preview URL for the selected file (inline createObjectURL leaked a
+  // new blob URL on every re-render during processing).
+  const sourcePreviewUrl = useMemo(
+    () => (sourceVideo ? URL.createObjectURL(sourceVideo) : null),
+    [sourceVideo]
+  );
+  useEffect(() => {
+    return () => {
+      if (sourcePreviewUrl) URL.revokeObjectURL(sourcePreviewUrl);
+    };
+  }, [sourcePreviewUrl]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -96,13 +130,21 @@ export default function AutoSplit() {
       
       const videoUrl = urlData.publicUrl;
       setSourceVideoUrl(videoUrl);
+      muxAssetRef.current = null; // new source video → stale Mux asset
+      setProgress(20);
+
+      // Read the real duration so scene fallbacks / clip ranges never exceed it
+      const duration = await getVideoDuration(sourceVideo);
+      setVideoDuration(duration);
       setProgress(25);
 
-      // 2. Transcribe the video
+      // 2. Transcribe the video — video-transcribe accepts { video_url } and
+      // returns { transcript }. (transcribe-audio needs base64 audio; calling
+      // it with a URL always failed silently, so every run had no transcript.)
       setProcessingStep("transcribing");
       const { data: transcriptData, error: transcriptError } = await lovableFunctions.functions.invoke(
-        "transcribe-audio",
-        { body: { video_url: videoUrl } }
+        "video-transcribe",
+        { body: { video_url: videoUrl, include_timestamps: false } }
       );
 
       if (transcriptError) {
@@ -116,30 +158,38 @@ export default function AutoSplit() {
       setProcessingStep("detecting_scenes");
       const { data: sceneData, error: sceneError } = await lovableFunctions.functions.invoke(
         "yt-scene-detect",
-        { body: { video_url: videoUrl, transcript } }
+        { body: { video_url: videoUrl, transcript, video_duration: duration || undefined } }
       );
 
       if (sceneError) {
         console.warn("Scene detection failed, using basic segmentation:", sceneError);
       }
 
-      const scenes = sceneData?.scenes || [];
+      // AI-success path returns scenes under analysis.scenes; fallback returns
+      // top-level scenes. Read both so real detections aren't discarded.
+      const scenes = sceneData?.analysis?.scenes ?? sceneData?.scenes ?? [];
       setProgress(65);
 
       // 4. Generate shorts with AI
       setProcessingStep("generating_shorts");
+      // Time-based fallback segments scaled to the REAL video length
+      // (previously hardcoded 0–70s regardless of duration).
+      const fallbackDur = duration > 0 ? duration : 50;
+      const seg = fallbackDur / 5;
+      const fallbackScenes = [
+        "Opening segment", "Main content", "Middle segment", "Key moment", "Closing",
+      ].map((description, i) => ({
+        start: Math.round(i * seg * 10) / 10,
+        end: Math.round(Math.min((i + 1) * seg, fallbackDur) * 10) / 10,
+        description,
+      }));
+
       const { data: shortsData, error: shortsError } = await lovableFunctions.functions.invoke(
         "yt-generate-shorts",
         {
           body: {
             job_id: `autosplit-${Date.now()}`,
-            scenes: scenes.length > 0 ? scenes : [
-              { start: 0, end: 10, description: "Opening segment" },
-              { start: 10, end: 25, description: "Main content" },
-              { start: 25, end: 40, description: "Middle segment" },
-              { start: 40, end: 55, description: "Key moment" },
-              { start: 55, end: 70, description: "Closing" },
-            ],
+            scenes: scenes.length > 0 ? scenes : fallbackScenes,
             transcript,
           },
         }
@@ -149,41 +199,53 @@ export default function AutoSplit() {
 
       setProgress(90);
 
-      // Parse the shorts
-      const generatedShorts: MicroReel[] = (shortsData?.shorts || []).map((s: any, idx: number) => ({
-        id: s.id || `reel-${idx + 1}`,
-        title: s.title || `Reel ${idx + 1}`,
-        hook: s.hook,
-        start: s.start || idx * 10,
-        end: s.end || (idx + 1) * 10,
-        duration: s.duration || (s.end - s.start) || 10,
-        hook_strength: s.hook_strength,
-        virality_score: s.virality_score,
-        ad_potential: s.ad_potential,
-        overlay_suggestions: s.overlay_suggestions,
-        caption_suggestions: s.caption_suggestions,
-        cta: s.cta,
-        music_suggestion: s.music_suggestion,
-        render_status: "pending",
-      }));
+      // Clamp any AI-suggested range to the real video length
+      const clampEnd = (v: number) => (duration > 0 ? Math.min(v, duration) : v);
 
-      // If we got no shorts, create fallback segments
+      // Parse the shorts
+      const generatedShorts: MicroReel[] = (shortsData?.shorts || [])
+        .map((s: any, idx: number) => {
+          const start = Math.max(0, Number(s.start) || idx * 10);
+          const end = clampEnd(Number(s.end) || start + 10);
+          return {
+            id: s.id || `reel-${idx + 1}`,
+            title: s.title || `Reel ${idx + 1}`,
+            hook: s.hook,
+            start,
+            end,
+            duration: Math.max(0, end - start),
+            hook_strength: s.hook_strength,
+            virality_score: s.virality_score,
+            ad_potential: s.ad_potential,
+            overlay_suggestions: s.overlay_suggestions,
+            caption_suggestions: s.caption_suggestions,
+            cta: s.cta,
+            music_suggestion: s.music_suggestion,
+            render_status: "pending" as const,
+          };
+        })
+        .filter((r: MicroReel) => r.duration >= 2); // drop degenerate clips
+
+      // If we got no usable shorts, fall back to even time segments — and say so
       if (generatedShorts.length === 0) {
-        const fallbackReels: MicroReel[] = [
-          { id: "1", title: "Hook → Reveal", start: 0, end: 8, duration: 8, render_status: "pending" },
-          { id: "2", title: "Installer POV", start: 8, end: 18, duration: 10, render_status: "pending" },
-          { id: "3", title: "Detail Sequence", start: 18, end: 28, duration: 10, render_status: "pending" },
-          { id: "4", title: "Before/After", start: 28, end: 38, duration: 10, render_status: "pending" },
-          { id: "5", title: "Overlay Trend", start: 38, end: 48, duration: 10, render_status: "pending" },
-        ];
+        const fallbackReels: MicroReel[] = fallbackScenes.map((s, i) => ({
+          id: String(i + 1),
+          title: s.description,
+          start: s.start,
+          end: s.end,
+          duration: Math.max(0, s.end - s.start),
+          render_status: "pending" as const,
+        }));
         setReels(fallbackReels);
+        setProgress(100);
+        setProcessingStep("complete");
+        toast.warning("AI couldn't pick highlights — split into 5 even segments instead");
       } else {
         setReels(generatedShorts);
+        setProgress(100);
+        setProcessingStep("complete");
+        toast.success(`Generated ${generatedShorts.length} micro-reels!`);
       }
-
-      setProgress(100);
-      setProcessingStep("complete");
-      toast.success(`Generated ${generatedShorts.length || 5} micro-reels!`);
 
     } catch (err) {
       console.error("AutoSplit error:", err);
@@ -207,28 +269,28 @@ export default function AutoSplit() {
         prev.map((r) => (r.id === reel.id ? { ...r, render_status: "rendering" } : r))
       );
 
-      // First upload to Mux if needed
-      const { data: muxData, error: muxError } = await lovableFunctions.functions.invoke("mux-upload", {
-        body: { file_url: sourceVideoUrl },
-      });
+      // Upload the source to Mux ONCE and reuse the asset for every clip
+      // (previously each Render re-uploaded the full video: 5 reels = 5
+      // duplicate Mux assets and minutes of redundant waiting).
+      if (!muxAssetRef.current) {
+        const { data: muxData, error: muxError } = await lovableFunctions.functions.invoke("mux-upload", {
+          body: { file_url: sourceVideoUrl },
+        });
 
-      if (muxError) throw new Error(`Mux upload failed: ${muxError.message}`);
+        if (muxError) throw new Error(`Mux upload failed: ${muxError.message}`);
+        if (!muxData?.asset_id) throw new Error("Failed to get Mux asset ID");
 
-      const muxAssetId = muxData?.asset_id;
-      const muxPlaybackId = muxData?.playback_id;
-
-      if (!muxAssetId) {
-        throw new Error("Failed to get Mux asset ID");
+        muxAssetRef.current = {
+          assetId: muxData.asset_id,
+          playbackId: muxData.playback_id,
+        };
       }
 
-      // Wait a bit for Mux to process
-      await new Promise((r) => setTimeout(r, 3000));
-
-      // Create clip
+      // Create clip (mux-create-clip now waits for the asset to be ready)
       const { data: clipData, error: clipError } = await lovableFunctions.functions.invoke("mux-create-clip", {
         body: {
-          asset_id: muxAssetId,
-          playback_id: muxPlaybackId,
+          asset_id: muxAssetRef.current.assetId,
+          playback_id: muxAssetRef.current.playbackId,
           start_time: reel.start,
           end_time: reel.end,
           output_name: reel.title,
@@ -238,6 +300,29 @@ export default function AutoSplit() {
 
       if (clipError) throw new Error(`Clip creation failed: ${clipError.message}`);
 
+      const renderedUrl = clipData?.download_url || clipData?.playback_url || clipData?.clip_url;
+      if (!renderedUrl) throw new Error("Clip created but no URL returned");
+
+      // Persist to the Media Library so the reel survives refresh/Start Over
+      // (previously clips lived only in React state and were lost).
+      const { error: cfError } = await contentDB.from("content_files").insert({
+        file_url: renderedUrl,
+        file_type: "video",
+        source: "auto_split",
+        original_filename: `${reel.title}.mp4`,
+        thumbnail_url: clipData?.thumbnail_url || null,
+        duration_seconds: Math.round(reel.duration),
+        tags: ["auto-split", "micro-reel"],
+        ai_labels: {
+          hook: reel.hook,
+          virality_score: reel.virality_score,
+          source_video: sourceVideoUrl,
+          start: reel.start,
+          end: reel.end,
+        },
+      });
+      if (cfError) console.error("Failed to save reel to media library:", cfError);
+
       // Update reel with rendered URL
       setReels((prev) =>
         prev.map((r) =>
@@ -245,7 +330,8 @@ export default function AutoSplit() {
             ? {
                 ...r,
                 render_status: "complete",
-                rendered_url: clipData?.download_url || clipData?.clip_url,
+                rendered_url: renderedUrl,
+                thumbnail_url: clipData?.thumbnail_url || r.thumbnail_url,
               }
             : r
         )
@@ -286,7 +372,8 @@ export default function AutoSplit() {
 
   const handleDownloadReel = (reel: MicroReel) => {
     if (reel.rendered_url) {
-      downloadFromUrl(reel.rendered_url, generateFilename(`reel-${reel.id}`, "mp4"));
+      // downloadToDevice saves the file; downloadFromUrl just opened a tab
+      downloadToDevice(reel.rendered_url, generateFilename(`reel-${reel.id}`, "mp4"));
     } else {
       toast.error("Reel not rendered yet. Click 'Render' first.");
     }
@@ -318,7 +405,9 @@ export default function AutoSplit() {
     }
 
     try {
-      await contentDB.from("content_queue").insert({
+      // supabase-js returns errors instead of throwing — check it, or an RLS
+      // denial still shows the success toast.
+      const { error: insertError } = await contentDB.from("content_queue").insert({
         content_type: "reel",
         status: "draft",
         title: reel.title,
@@ -333,6 +422,7 @@ export default function AutoSplit() {
           overlay_suggestions: reel.overlay_suggestions,
         },
       });
+      if (insertError) throw insertError;
       toast.success(`"${reel.title}" added to scheduler!`);
     } catch (err) {
       console.error("Schedule error:", err);
@@ -419,9 +509,9 @@ export default function AutoSplit() {
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
                 <div className="w-32 aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden">
-                  {sourceVideo && (
+                  {sourcePreviewUrl && (
                     <video
-                      src={URL.createObjectURL(sourceVideo)}
+                      src={sourcePreviewUrl}
                       className="w-full h-full object-cover"
                       muted
                     />
@@ -488,6 +578,8 @@ export default function AutoSplit() {
                   setSourceVideoUrl(null);
                   setProcessingStep("idle");
                   setProgress(0);
+                  setVideoDuration(0);
+                  muxAssetRef.current = null;
                 }}
               >
                 Start Over

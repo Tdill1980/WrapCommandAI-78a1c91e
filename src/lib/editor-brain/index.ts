@@ -33,25 +33,18 @@ export {
   type AssemblerOptions,
 } from "./creativeAssembler";
 
-// Render Translation Layer
+// Render Translation Layer (native ffmpeg blueprint — NO Creatomate)
 export {
-  translateToCreatomate,
-  createMultiPlatformRenderJobs,
-  buildAdvancedTimeline,
-  generateThumbnailSpec,
-  exportCreativeAsJSON,
-  validateTimeline,
-  type CreatomateModifications,
-  type CreatomateTimeline,
-  type RenderJob,
-  type BrandColors,
-  type TranslatorOptions,
-} from "./renderTranslator";
+  translateToBlueprint,
+  type BlueprintClip,
+  type BlueprintTranslatorOptions,
+} from "./blueprintTranslator";
 
 // Combined pipeline function for convenience
 import { analyzeVideo, VideoAnalyzerOptions, VideoAnalysis } from "./videoAnalyzer";
 import { assembleCreative, CreativeAssembly, EditorMode, Platform } from "./creativeAssembler";
-import { translateToCreatomate, CreatomateTimeline, BrandColors } from "./renderTranslator";
+import { translateToBlueprint, BlueprintClip } from "./blueprintTranslator";
+import { SceneBlueprint } from "@/types/SceneBlueprint";
 
 export interface EditorBrainPipelineOptions {
   videoUrl: string;
@@ -61,8 +54,8 @@ export interface EditorBrainPipelineOptions {
   duration?: number;
   mode?: EditorMode;
   platform?: Platform;
-  brandColors?: BrandColors;
-  templateId?: string;
+  clipId?: string;
+  brand?: string;
   musicUrl?: string;
   voiceProfile?: {
     tone?: string;
@@ -75,19 +68,22 @@ export interface EditorBrainPipelineOptions {
 export interface EditorBrainResult {
   analysis: VideoAnalysis;
   creative: CreativeAssembly;
-  timeline: CreatomateTimeline;
+  blueprint: SceneBlueprint;
 }
 
 /**
- * Full pipeline: Analyze → Assemble → Translate
- * Use this for one-shot content generation
+ * Full pipeline: Analyze → Assemble → Translate to native blueprint.
+ * Use this for one-shot content generation. The blueprint renders on the
+ * self-hosted ffmpeg worker (render-reel-ffmpeg) — there is no Creatomate step.
  */
 export async function runEditorBrainPipeline(
   options: EditorBrainPipelineOptions
 ): Promise<EditorBrainResult> {
+  const videoUrl = options.videoUrl;
+
   // Step 1: Analyze video
   const analysis = await analyzeVideo({
-    playbackUrl: options.playbackUrl || options.videoUrl,
+    playbackUrl: options.playbackUrl || videoUrl,
     muxPlaybackId: options.muxPlaybackId,
     existingTranscript: options.existingTranscript,
     duration: options.duration,
@@ -101,18 +97,21 @@ export async function runEditorBrainPipeline(
     voiceProfile: options.voiceProfile,
   });
 
-  // Step 3: Translate to render format
-  const timeline = translateToCreatomate({
+  // Step 3: Translate to a native, renderable SceneBlueprint
+  const clips: BlueprintClip[] = [
+    { id: options.clipId || "clip_1", url: videoUrl, duration: options.duration },
+  ];
+  const blueprint = translateToBlueprint({
     creative,
-    videoUrl: options.videoUrl,
-    brandColors: options.brandColors,
-    templateId: options.templateId,
-    musicUrl: options.musicUrl,
+    clips,
+    platform: options.platform || "instagram",
+    brand: options.brand,
+    source: options.mode === "smart_assist" ? "smart_assist" : "ai",
   });
 
   return {
     analysis,
     creative,
-    timeline,
+    blueprint,
   };
 }

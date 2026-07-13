@@ -284,7 +284,8 @@ export default function InspirationHub() {
           .from("organization_members")
           .select("organization_id")
           .eq("user_id", user.id)
-          .single();
+          .limit(1)
+          .maybeSingle();
         organizationId = orgMember?.organization_id;
       }
 
@@ -409,7 +410,11 @@ export default function InspirationHub() {
                   <Upload className="w-4 h-4 mr-2" />
                   Upload Inspo Video
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => setActiveTab("saved")}
+                >
                   <Bookmark className="w-4 h-4 mr-2" />
                   Saved Inspiration
                 </Button>
@@ -573,7 +578,7 @@ export default function InspirationHub() {
                         variant="secondary"
                         onClick={() => {
                           toast.info("Opening Static Creator with this style...");
-                          navigate("/organic/static-creator", { state: { staticAd: ad } });
+                          navigate("/organic/static", { state: { staticAd: ad } });
                         }}
                       >
                         <Wand2 className="w-4 h-4 mr-2" />
@@ -1027,7 +1032,28 @@ export default function InspirationHub() {
                     <Copy className="w-4 h-4 mr-2" />
                     Copy Overlay Texts
                   </Button>
-                  <Button variant="ghost" className="w-full">
+                  <Button
+                    variant="ghost"
+                    className="w-full"
+                    onClick={async () => {
+                      // The analysis was persisted server-side keyed by its
+                      // source URL — flag the newest matching row as saved.
+                      const { data: row, error: findErr } = await supabase
+                        .from("inspo_analyses")
+                        .select("id")
+                        .eq("source_url", url)
+                        .order("created_at", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                      if (findErr || !row) {
+                        toast.error("Couldn't find this analysis to save — try re-analyzing");
+                        return;
+                      }
+                      toggleSaved({ id: row.id, isSaved: true });
+                      toast.success("Style saved to your library!");
+                      setActiveTab("saved");
+                    }}
+                  >
                     <Bookmark className="w-4 h-4 mr-2" />
                     Save Style to Library
                   </Button>

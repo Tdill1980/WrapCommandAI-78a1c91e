@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ import { downloadToDevice, copyToClipboard, generateFilename } from "@/lib/downl
 import { StyleReferenceUpload, type ExtractedStyle } from "@/components/static-creator/StyleReferenceUpload";
 import { CopyBoostModal } from "@/components/static-creator/CopyBoostModal";
 import { CarouselTopicGenerator } from "@/components/static-creator/CarouselTopicGenerator";
+import { CarouselOutputDisplay } from "@/components/contentbox/CarouselOutputDisplay";
 
 const TEMPLATES = [
   { id: "before-after", name: "Before/After", icon: "↔️" },
@@ -47,6 +48,14 @@ interface LocationState {
     scheduled_date: string;
   };
   autoGenerate?: boolean;
+  staticAd?: { file_url?: string; original_filename?: string | null };
+}
+
+interface CarouselOutputState {
+  slides: Array<{ preview_url?: string; caption?: string; layout_template?: string }>;
+  carousel_caption?: string;
+  hashtags?: string[];
+  cta?: string;
 }
 
 export default function StaticCreator() {
@@ -65,7 +74,7 @@ export default function StaticCreator() {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [generatedCaption, setGeneratedCaption] = useState<string | null>(null);
   const [generatedHashtags, setGeneratedHashtags] = useState<string[]>([]);
-  const [carouselSlides, setCarouselSlides] = useState<string[]>([]);
+  const [carouselOutput, setCarouselOutput] = useState<CarouselOutputState | null>(null);
   const [captionCopied, setCaptionCopied] = useState(false);
   
   // NEW: AI Copy Boost & Upload States
@@ -74,6 +83,24 @@ export default function StaticCreator() {
   const [styleReferenceUrl, setStyleReferenceUrl] = useState<string | null>(null);
   const [wrappedVehicleUrl, setWrappedVehicleUrl] = useState<string | null>(null);
   const [isBoosted, setIsBoosted] = useState(false);
+
+  // Seed the form from navigation state (calendar "Generate" / Inspiration Hub
+  // "Generate Similar") — previously this state was parsed and then ignored,
+  // so those entry points opened a blank form.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !state) return;
+    seededRef.current = true;
+    if (state.calendarItem?.title) {
+      setHeadline(state.calendarItem.title);
+      toast.info(`Loaded from calendar: ${state.calendarItem.title}`);
+    }
+    if (state.staticAd?.file_url) {
+      setStyleReferenceUrl(state.staticAd.file_url);
+      toast.info("Style reference loaded from Inspiration Hub");
+    }
+  }, [state]);
+
   const handleGenerateSingle = async () => {
     if (!headline.trim()) {
       toast.error("Please enter a headline");
@@ -156,20 +183,27 @@ export default function StaticCreator() {
       }
     } catch (err) {
       console.error("Generation failed:", err);
-      toast.error("Failed to generate. Brief saved as draft.");
-      
-      // Still save the brief
-      await contentDB.from("content_queue").insert({
-        content_type: "static",
-        status: "draft",
-        title: headline,
-        caption: bodyText,
-        brand: contentMetadata.brand,
-        channel: contentMetadata.channel,
-        content_purpose: contentMetadata.contentPurpose,
-        platform: contentMetadata.platform,
-        mode: "manual",
-      });
+
+      // Best-effort brief save — guarded so a second failure here can't throw
+      // out of the catch block unhandled.
+      try {
+        const { error: briefError } = await contentDB.from("content_queue").insert({
+          content_type: "static",
+          status: "draft",
+          title: headline,
+          caption: bodyText,
+          brand: contentMetadata.brand,
+          channel: contentMetadata.channel,
+          content_purpose: contentMetadata.contentPurpose,
+          platform: contentMetadata.platform,
+          mode: "manual",
+        });
+        if (briefError) throw briefError;
+        toast.error("Failed to generate. Brief saved as draft.");
+      } catch (briefErr) {
+        console.error("Brief save also failed:", briefErr);
+        toast.error("Failed to generate (and the draft could not be saved)");
+      }
     } finally {
       setGenerating(false);
     }
@@ -182,14 +216,51 @@ export default function StaticCreator() {
     }
 
     setGenerating(true);
+    setCarouselOutput(null);
     try {
-      // Save carousel brief to queue
-      await contentDB.from("content_queue").insert({
+      // Actually GENERATE the carousel (this used to only insert a title-only
+      // brief into content_queue — no slides, no output, nothing downstream).
+      toast.info("Generating 5 carousel slides — this takes a minute…");
+      const { data, error } = await lovableFunctions.functions.invoke("ai-generate-static", {
+        body: {
+          template: selectedTemplate || "tips-list",
+          headline,
+          bodyText,
+          ctaText,
+          brand: contentMetadata.brand,
+          platform: contentMetadata.platform,
+          contentPurpose: contentMetadata.contentPurpose,
+          slideCount: 5,
+          styleReference: extractedStyle ? {
+            imageUrl: styleReferenceUrl,
+            extractedStyle,
+          } : undefined,
+          wrappedVehicleUrl,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success || !Array.isArray(data.slides) || data.slides.length === 0) {
+        throw new Error(data?.error || "No slides were generated");
+      }
+
+      const output: CarouselOutputState = {
+        slides: data.slides,
+        carousel_caption: data.carousel_caption,
+        hashtags: data.hashtags,
+        cta: data.cta,
+      };
+      setCarouselOutput(output);
+
+      // Persist an ACTIONABLE queue row — slides included, first slide as the
+      // preview output_url.
+      const { error: insertError } = await contentDB.from("content_queue").insert({
         content_type: "carousel",
         status: "draft",
         title: headline,
-        caption: bodyText,
-        cta_text: ctaText,
+        caption: data.carousel_caption || bodyText,
+        cta_text: data.cta || ctaText,
+        output_url: data.slides[0]?.preview_url || null,
         brand: contentMetadata.brand,
         channel: contentMetadata.channel,
         content_purpose: contentMetadata.contentPurpose,
@@ -197,18 +268,32 @@ export default function StaticCreator() {
         ad_placement: contentMetadata.adPlacement,
         mode: "auto",
         ai_metadata: {
-          slides_planned: 5,
+          slides: data.slides,
+          hashtags: data.hashtags,
           template: selectedTemplate,
           generated_at: new Date().toISOString(),
         },
       });
-
-      toast.success("Carousel brief saved! Ready for design.");
+      if (insertError) {
+        console.error("Failed to save carousel to queue:", insertError);
+        toast.warning("Carousel generated, but saving to the queue failed");
+      } else {
+        toast.success(`Carousel generated — ${data.slides.length} slides!`);
+      }
     } catch (err) {
-      console.error("Failed to save carousel:", err);
-      toast.error("Failed to save carousel brief");
+      console.error("Carousel generation failed:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to generate carousel");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDownloadCarousel = async () => {
+    if (!carouselOutput) return;
+    for (const [i, slide] of carouselOutput.slides.entries()) {
+      if (slide.preview_url) {
+        await downloadToDevice(slide.preview_url, generateFilename(`carousel-slide-${i + 1}`, "png"));
+      }
     }
   };
 
@@ -545,6 +630,13 @@ export default function StaticCreator() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Generated carousel output */}
+            <CarouselOutputDisplay
+              output={carouselOutput}
+              onDownloadAll={handleDownloadCarousel}
+              onSchedule={() => navigate("/content-schedule")}
+            />
           </TabsContent>
         </Tabs>
 

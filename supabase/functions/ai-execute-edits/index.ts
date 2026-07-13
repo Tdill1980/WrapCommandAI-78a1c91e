@@ -338,11 +338,17 @@ serve(async (req) => {
           console.error("[ai-execute-edits] render-reel returned failure:", renderRes.data.error);
           renderResult = { success: false, ...renderRes.data };
         } else {
-          renderResult = { 
-            success: true, 
-            download_url: renderRes.data?.final_url,
-            ready: true,
-            ...renderRes.data 
+          // The ffmpeg renderer returns status:"processing" with final_url:null when
+          // the GitHub-Actions job hasn't finished inside the ~100s wait (the norm).
+          // Only mark ready when a real URL exists — otherwise the queue row would be
+          // set to "complete" with a null final_render_url and polling would stop.
+          const finalUrl = renderRes.data?.final_url ?? null;
+          const isReady = renderRes.data?.status !== "processing" && !!finalUrl;
+          renderResult = {
+            success: true,
+            download_url: finalUrl,
+            ...renderRes.data,
+            ready: isReady,
           };
         }
       } catch (e) {

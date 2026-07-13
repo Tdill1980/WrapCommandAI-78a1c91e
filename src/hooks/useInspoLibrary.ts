@@ -47,7 +47,8 @@ export function useInspoLibrary() {
           .from("organization_members")
           .select("organization_id")
           .eq("user_id", user.id)
-          .single();
+          .limit(1)
+          .maybeSingle();
         organizationId = orgMember?.organization_id || null;
       }
 
@@ -138,7 +139,8 @@ export function useInspoLibrary() {
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", user.id)
-      .single();
+      .limit(1)
+      .maybeSingle();
     
     const organizationId = orgMember?.organization_id;
     if (!organizationId) {

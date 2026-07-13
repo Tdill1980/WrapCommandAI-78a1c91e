@@ -83,40 +83,54 @@ This design should prominently feature the wrapped vehicle from this photo: ${wr
 The vehicle wrap is the star - make sure it's visible and impressive.
 ` : "";
 
+    const singlePostSchema = `{
+  "layout": {
+    "background_type": "gradient" | "solid" | "image",
+    "background_value": string (gradient CSS or hex color),
+    "elements": [
+      {
+        "type": "text" | "shape" | "icon",
+        "content": string,
+        "position": { "x": number (0-100%), "y": number (0-100%) },
+        "style": {
+          "fontSize": number,
+          "fontWeight": "400" | "600" | "700" | "800",
+          "color": string (hex),
+          "textAlign": "left" | "center" | "right"
+        }
+      }
+    ]
+  },
+  "dimensions": { "width": 1080, "height": 1080 },
+  "colorPalette": string[] (3-5 hex colors used),
+  "caption": string (Instagram caption for this post),
+  "hashtags": string[] (5-10 relevant hashtags)
+}`;
+
+    // Carousel schema is DIFFERENT and must be valid JSON — the old template
+    // wrapped a single object in "slides": [ with a dangling brace.
+    const carouselSchema = `{
+  "slides": [
+    {
+      "slide_number": number (1-${slideCount}),
+      "headline": string (short punchy headline for this slide),
+      "body": string (1-2 sentence supporting copy for this slide),
+      "visual_direction": string (what the slide graphic should show)
+    }
+  ],
+  "carousel_caption": string (one Instagram caption for the whole carousel),
+  "hashtags": string[] (5-10 relevant hashtags),
+  "cta": string (final-slide call to action)
+}`;
+
     const systemPrompt = `You are an expert social media graphic designer specializing in ${brand || "vehicle wrap"} industry content.
 Create ${isCarousel ? `a ${slideCount}-slide carousel` : "a single static post"} design specification that is visually compelling and optimized for ${platform || "Instagram"}.
 
 ${styleInstructions}
 ${vehicleInstructions}
 
-Return a JSON object with:
-{
-  ${isCarousel ? `"slides": [` : ""}
-  {
-    "layout": {
-      "background_type": "gradient" | "solid" | "image",
-      "background_value": string (gradient CSS or hex color),
-      "elements": [
-        {
-          "type": "text" | "shape" | "icon",
-          "content": string,
-          "position": { "x": number (0-100%), "y": number (0-100%) },
-          "style": {
-            "fontSize": number,
-            "fontWeight": "400" | "600" | "700" | "800",
-            "color": string (hex),
-            "textAlign": "left" | "center" | "right"
-          }
-        }
-      ]
-    },
-    "dimensions": { "width": 1080, "height": 1080 },
-    "colorPalette": string[] (3-5 hex colors used),
-    "caption": string (Instagram caption for this slide/post),
-    "hashtags": string[] (5-10 relevant hashtags)
-  }
-  ${isCarousel ? `]` : ""}
-}
+Return a JSON object with EXACTLY this shape:
+${isCarousel ? carouselSchema : singlePostSchema}
 
 For ${brand || "vehicle wrap"} content:
 - Use bold, high-contrast typography
@@ -207,15 +221,17 @@ Make it visually striking and optimized for engagement.`;
     }
 
     // Build enhanced image prompt with style reference and vehicle
-    const styleColors = styleReference?.extractedStyle 
+    const styleColors = styleReference?.extractedStyle
       ? `Use these exact colors: primary=${styleReference.extractedStyle.primary_text_color || "#FFFFFF"}, accent=${styleReference.extractedStyle.accent_color || "#FF6B35"}`
       : "Colors: Dark professional theme with orange/red accents";
 
-    const imagePrompt = `Create a professional social media graphic for a vehicle wrap business:
+    const generateImage = async (headlineText: string, subText?: string, cta?: string, visualDirection?: string): Promise<string | null> => {
+      const imagePrompt = `Create a professional social media graphic for a vehicle wrap business:
 - Style: ${template}
-- Headline text: "${headline}"
-${bodyText ? `- Subtext: "${bodyText}"` : ""}
-${ctaText ? `- Call to action: "${ctaText}"` : ""}
+- Headline text: "${headlineText}"
+${subText ? `- Subtext: "${subText}"` : ""}
+${cta ? `- Call to action: "${cta}"` : ""}
+${visualDirection ? `- Visual direction: ${visualDirection}` : ""}
 - Brand: ${brand || "WPW"}
 - ${styleColors}
 ${wrappedVehicleUrl ? `- IMPORTANT: Feature this wrapped vehicle prominently in the design (reference: ${wrappedVehicleUrl})` : ""}
@@ -225,38 +241,70 @@ ${wrappedVehicleUrl ? `- IMPORTANT: Feature this wrapped vehicle prominently in 
 - Professional automotive industry aesthetic
 Ultra high resolution.`;
 
-    const imageResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-2.5-flash-image-preview",
-        messages: [
-          { role: "user", content: imagePrompt }
-        ],
-        modalities: ["image", "text"]
-      }),
-    });
-
-    let imageUrl: string | null = null;
-
-    if (imageResponse.ok) {
-      const imageData = await imageResponse.json();
-      const generatedImage = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-      
-      if (generatedImage) {
-        imageUrl = generatedImage;
-        console.log("Image generated successfully");
+      const imageResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash-image-preview",
+          messages: [
+            { role: "user", content: imagePrompt }
+          ],
+          modalities: ["image", "text"]
+        }),
+      });
+      if (!imageResponse.ok) {
+        console.warn("Image generation failed:", imageResponse.status);
+        return null;
       }
-    } else {
-      console.warn("Image generation failed, returning design only");
+      const imageData = await imageResponse.json();
+      return imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url || null;
+    };
+
+    // ===== CAROUSEL: one image per slide + carousel-level caption =====
+    if (isCarousel && Array.isArray(design.slides) && design.slides.length > 0) {
+      const slideSpecs = design.slides.slice(0, Math.min(slideCount!, 6));
+      const slides = [];
+      for (const [i, slide] of slideSpecs.entries()) {
+        const preview = await generateImage(
+          slide.headline || `${headline} — ${i + 1}`,
+          slide.body,
+          i === slideSpecs.length - 1 ? (design.cta || ctaText) : undefined,
+          slide.visual_direction
+        );
+        slides.push({
+          slide_number: slide.slide_number ?? i + 1,
+          headline: slide.headline,
+          caption: slide.body,
+          preview_url: preview,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: "carousel",
+          design,
+          slides,
+          carousel_caption: design.carousel_caption || headline,
+          hashtags: design.hashtags || [],
+          cta: design.cta || ctaText || null,
+          // Back-compat fields (single-post consumers)
+          imageUrl: slides[0]?.preview_url || null,
+          caption: design.carousel_caption || headline,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
+    // ===== SINGLE POST (unchanged behavior) =====
+    const imageUrl = await generateImage(headline, bodyText, ctaText);
+
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         design,
         imageUrl,
         caption: design.caption,

@@ -307,7 +307,7 @@ export default function ReelBuilder() {
       setSuggestedCta(job.cta || null);
       setReelConcept(job.hook || 'Agent-created reel');
 
-      // ✅ Music: Creatomate requires a publicly reachable URL.
+      // ✅ Music: the ffmpeg renderer requires a publicly reachable URL.
       // For now we ONLY allow absolute http(s) URLs (no local /audio/* placeholders).
       const resolveMusicUrl = (j: ProducerJob): string | null => {
         const url = j.musicUrl || null;
@@ -748,145 +748,157 @@ export default function ReelBuilder() {
     }
   };
 
-  // Auto-save when render succeeds via renderProgress
-  useEffect(() => {
-    const saveRenderedVideo = async () => {
-      if (renderProgress?.status === 'complete' && renderProgress.outputUrl && !isFinalizingRender) {
-        setIsFinalizingRender(true);
-        
+  // Guards against persisting the same finished reel twice.
+  const persistedUrlRef = useRef<string | null>(null);
+
+  // Persist a finished reel to the Media Library + content_queue + calendar and
+  // finalize the download URL. Shared by BOTH render entry points:
+  //  - the Test Render path (via the renderProgress effect below), and
+  //  - the main "Render Reel" button (handleRenderReel), which previously never
+  //    ran any of this — so main-path reels never reached the library/queue/calendar.
+  const persistRenderedReel = useCallback(async (outputUrl: string) => {
+    // Persist each finished URL at most once — the effect below can re-fire when
+    // isFinalizingRender toggles, and handleRenderReel may also call this directly.
+    if (!outputUrl || isFinalizingRender || persistedUrlRef.current === outputUrl) return;
+    persistedUrlRef.current = outputUrl;
+    setIsFinalizingRender(true);
+
+    try {
+      // 🔧 FIX: Use correct sources for hook/cta - prioritize producerJob, then suggestedHook state, then autoCreateState
+      const effectiveHook = suggestedHook
+        ?? producerJobState?.producerJob?.hook
+        ?? autoCreateState?.suggestedHook
+        ?? reelConcept;
+      const effectiveCta = suggestedCta
+        ?? producerJobState?.producerJob?.cta
+        ?? autoCreateState?.suggestedCta;
+      const effectiveCaption = producerJobState?.producerJob?.caption
+        ?? effectiveHook
+        ?? reelConcept;
+      const effectiveHashtags = producerJobState?.producerJob?.hashtags ?? [];
+
+      // Save to content_files (Media Library)
+      const { error: fileError } = await contentDB
+        .from('content_files')
+        .insert({
+          file_url: outputUrl,
+          file_type: 'video',
+          source: 'ai_reel_builder',
+          brand: contentMetadata.brand,
+          tags: ['ai-created', 'reel', 'auto-generated'],
+          original_filename: `AI-Reel-${Date.now()}.mp4`,
+          ai_labels: {
+            concept: reelConcept,
+            clips_used: clips.length,
+            hook: effectiveHook,
+            cta: effectiveCta,
+          },
+        })
+        .select()
+        .single();
+
+      if (fileError) throw fileError;
+
+      // Save to content_queue (for scheduling/review) with metadata
+      const { error: queueError } = await contentDB
+        .from('content_queue')
+        .insert({
+          content_type: 'reel',
+          status: 'draft',
+          output_url: outputUrl,
+          caption: effectiveCaption,
+          hashtags: effectiveHashtags,
+          brand: contentMetadata.brand,
+          channel: contentMetadata.channel,
+          content_purpose: contentMetadata.contentPurpose,
+          platform: contentMetadata.platform,
+          ad_placement: contentMetadata.adPlacement,
+          ai_metadata: {
+            concept: reelConcept,
+            clips_used: clips.map(c => c.id),
+            generated_at: new Date().toISOString(),
+            source: contentCalendarId ? 'agent_flow' : 'manual',
+          },
+          mode: 'auto',
+        });
+
+      if (queueError) throw queueError;
+
+      // 🔧 FIX: Update linked content_calendar entry if we have one
+      if (contentCalendarId) {
         try {
-          // 🔧 FIX: Use correct sources for hook/cta - prioritize producerJob, then suggestedHook state, then autoCreateState
-          const effectiveHook = suggestedHook 
-            ?? producerJobState?.producerJob?.hook 
-            ?? autoCreateState?.suggestedHook 
-            ?? reelConcept;
-          const effectiveCta = suggestedCta 
-            ?? producerJobState?.producerJob?.cta 
-            ?? autoCreateState?.suggestedCta;
-          const effectiveCaption = producerJobState?.producerJob?.caption 
-            ?? effectiveHook 
-            ?? reelConcept;
-          const effectiveHashtags = producerJobState?.producerJob?.hashtags ?? [];
-
-          // Save to content_files (Media Library)
-          const { data: fileData, error: fileError } = await contentDB
-            .from('content_files')
-            .insert({
-              file_url: renderProgress.outputUrl,
-              file_type: 'video',
-              source: 'ai_reel_builder',
-              brand: contentMetadata.brand,
-              tags: ['ai-created', 'reel', 'auto-generated'],
-              original_filename: `AI-Reel-${Date.now()}.mp4`,
-              ai_labels: {
-                concept: reelConcept,
-                clips_used: clips.length,
-                hook: effectiveHook,
-                cta: effectiveCta,
-              },
-            })
-            .select()
-            .single();
-
-          if (fileError) throw fileError;
-
-          // Save to content_queue (for scheduling/review) with metadata
-          const { error: queueError } = await contentDB
-            .from('content_queue')
-            .insert({
-              content_type: 'reel',
-              status: 'draft',
-              output_url: renderProgress.outputUrl,
+          const { error: calError } = await contentDB
+            .from('content_calendar')
+            .update({
               caption: effectiveCaption,
               hashtags: effectiveHashtags,
-              brand: contentMetadata.brand,
-              channel: contentMetadata.channel,
-              content_purpose: contentMetadata.contentPurpose,
-              platform: contentMetadata.platform,
-              ad_placement: contentMetadata.adPlacement,
-              ai_metadata: {
-                concept: reelConcept,
-                clips_used: clips.map(c => c.id),
-                generated_at: new Date().toISOString(),
-                source: contentCalendarId ? 'agent_flow' : 'manual',
-              },
-              mode: 'auto',
-            });
+              title: effectiveHook,
+              status: 'draft',
+              // Store render URL in engagement_stats for reference
+              engagement_stats: { render_url: outputUrl },
+            })
+            .eq('id', contentCalendarId);
 
-          if (queueError) throw queueError;
-
-          // 🔧 FIX: Update linked content_calendar entry if we have one
-          if (contentCalendarId) {
-            try {
-              const { error: calError } = await contentDB
-                .from('content_calendar')
-                .update({
-                  caption: effectiveCaption,
-                  hashtags: effectiveHashtags,
-                  title: effectiveHook,
-                  status: 'draft',
-                  // Store render URL in engagement_stats for reference
-                  engagement_stats: { render_url: renderProgress.outputUrl },
-                })
-                .eq('id', contentCalendarId);
-
-              if (calError) {
-                console.error('[ReelBuilder] Failed to update calendar entry:', calError);
-              } else {
-                console.log('[ReelBuilder] ✅ Updated calendar entry with render result');
-              }
-            } catch (calErr) {
-              console.error('[ReelBuilder] Calendar update exception:', calErr);
-            }
-          }
-
-          // ============ PHASE 5: FINALIZATION CONTRACT ============
-          // This is the CRITICAL step that guarantees downloads work
-          // We call finalizeRender to ensure the video is properly stored
-          // and the download URL is persisted in the database
-          if (lastCreativeId) {
-            console.log('[ReelBuilder] 🔒 Finalizing render for creative:', lastCreativeId);
-            
-            const finalizationResult = await finalizeRender({
-              sourceType: 'ai_creative',
-              sourceId: lastCreativeId,
-              externalUrl: renderProgress.outputUrl,
-              metadata: {
-                title: effectiveCaption || 'Reel Builder Export',
-                format: sceneBlueprint?.format || 'reel',
-                duration: sceneBlueprint?.totalDuration,
-              },
-            });
-
-            if (finalizationResult.success && finalizationResult.downloadUrl) {
-              console.log('[ReelBuilder] ✅ Finalization complete, download URL:', finalizationResult.downloadUrl);
-              setFinalizedDownloadUrl(finalizationResult.downloadUrl);
-            } else {
-              console.error('[ReelBuilder] Finalization failed:', finalizationResult.error);
-              // Still allow download from render URL as fallback
-              setFinalizedDownloadUrl(renderProgress.outputUrl);
-            }
+          if (calError) {
+            console.error('[ReelBuilder] Failed to update calendar entry:', calError);
           } else {
-            // No creative ID, use render URL directly
-            setFinalizedDownloadUrl(renderProgress.outputUrl);
+            console.log('[ReelBuilder] ✅ Updated calendar entry with render result');
           }
-
-          setSavedVideoUrl(renderProgress.outputUrl);
-          setShowPostRenderModal(true);
-          toast.success('Reel saved to library and queue!');
-        } catch (error) {
-          console.error('Failed to save rendered video:', error);
-          toast.error('Render complete but failed to save');
-          // Still allow download from render URL
-          setFinalizedDownloadUrl(renderProgress.outputUrl);
-        } finally {
-          setIsFinalizingRender(false);
+        } catch (calErr) {
+          console.error('[ReelBuilder] Calendar update exception:', calErr);
         }
       }
-    };
 
-    saveRenderedVideo();
-  }, [renderProgress?.status, renderProgress?.outputUrl, contentMetadata, suggestedHook, suggestedCta, producerJobState, contentCalendarId, lastCreativeId, sceneBlueprint, isFinalizingRender]);
+      // ============ PHASE 5: FINALIZATION CONTRACT ============
+      // This is the CRITICAL step that guarantees downloads work
+      // We call finalizeRender to ensure the video is properly stored
+      // and the download URL is persisted in the database
+      if (lastCreativeId) {
+        console.log('[ReelBuilder] 🔒 Finalizing render for creative:', lastCreativeId);
+
+        const finalizationResult = await finalizeRender({
+          sourceType: 'ai_creative',
+          sourceId: lastCreativeId,
+          externalUrl: outputUrl,
+          metadata: {
+            title: effectiveCaption || 'Reel Builder Export',
+            format: sceneBlueprint?.format || 'reel',
+            duration: sceneBlueprint?.totalDuration,
+          },
+        });
+
+        if (finalizationResult.success && finalizationResult.downloadUrl) {
+          console.log('[ReelBuilder] ✅ Finalization complete, download URL:', finalizationResult.downloadUrl);
+          setFinalizedDownloadUrl(finalizationResult.downloadUrl);
+        } else {
+          console.error('[ReelBuilder] Finalization failed:', finalizationResult.error);
+          // Still allow download from render URL as fallback
+          setFinalizedDownloadUrl(outputUrl);
+        }
+      } else {
+        // No creative ID, use render URL directly
+        setFinalizedDownloadUrl(outputUrl);
+      }
+
+      setSavedVideoUrl(outputUrl);
+      setShowPostRenderModal(true);
+      toast.success('Reel saved to library and queue!');
+    } catch (error) {
+      console.error('Failed to save rendered video:', error);
+      toast.error('Render complete but failed to save');
+      // Still allow download from render URL
+      setFinalizedDownloadUrl(outputUrl);
+    } finally {
+      setIsFinalizingRender(false);
+    }
+  }, [isFinalizingRender, suggestedHook, suggestedCta, producerJobState, autoCreateState, reelConcept, contentMetadata, clips, contentCalendarId, lastCreativeId, sceneBlueprint]);
+
+  // Auto-save when render succeeds via renderProgress (Test Render path)
+  useEffect(() => {
+    if (renderProgress?.status === 'complete' && renderProgress.outputUrl) {
+      persistRenderedReel(renderProgress.outputUrl);
+    }
+  }, [renderProgress?.status, renderProgress?.outputUrl, persistRenderedReel]);
 
   // Handle render reel - REQUIRES SCENE BLUEPRINT (Authority enforced)
   const handleRenderReel = async () => {
@@ -1023,7 +1035,7 @@ export default function ReelBuilder() {
           blueprint: sceneBlueprint,
           music_url: audioUrl,
           creative_id: creative.id,
-          captions: captionsEngine.exportForCreatomate(),
+          captions: captionsEngine.exportForRender(),
         },
       });
 
@@ -1043,26 +1055,60 @@ export default function ReelBuilder() {
         return;
       }
 
-      console.log('[ReelBuilder] ✅ Render complete:', data);
+      console.log('[ReelBuilder] Render response:', data);
 
-      // ============ UPDATE CREATIVE WITH OUTPUT ============
-      await updateCreative(creative.id, {
-        status: 'complete',
-        output_url: data.final_url,
-        thumbnail_url: data.thumbnail_url,
-      });
-      await replaceStatusTag(creative.id, 'complete');
+      // The renderer returns final_url synchronously ONLY if the job finished inside
+      // its short in-request wait. With the GitHub-Actions ffmpeg worker that almost
+      // never happens — the normal response is { ok:true, status:'processing',
+      // final_url:null }. Previously this path marked the creative "complete" with a
+      // null URL and showed no video. Handle both cases explicitly.
+      const finalizeReel = async (finalUrl: string, thumbUrl?: string) => {
+        await updateCreative(creative.id, {
+          status: 'complete',
+          output_url: finalUrl,
+          thumbnail_url: thumbUrl,
+        });
+        await replaceStatusTag(creative.id, 'complete');
+        await persistRenderedReel(finalUrl);
+        toast.success('Render complete!', { description: `Creative: ${creative.id}` });
+      };
 
-      toast.success('Render complete!', { 
-        description: `Creative: ${creative.id}` 
-      });
-
-      // Update UI with the final URL
       if (data.final_url) {
-        setSavedVideoUrl(data.final_url);
-        setShowPostRenderModal(true);
+        // Synchronous completion.
+        await finalizeReel(data.final_url, data.thumbnail_url);
+      } else {
+        // Async: worker finishes later and writes video_edit_queue.final_render_url
+        // (and the ai_creative row). Poll the queue row until it resolves.
+        toast('Rendering your reel…', { description: 'This can take a couple of minutes.' });
+        let resolved = false;
+        for (let i = 0; i < 90; i++) { // ~6 min at 4s intervals
+          await new Promise((r) => setTimeout(r, 4000));
+          const { data: qRow } = await contentDB
+            .from('video_edit_queue')
+            .select('render_status, final_render_url, error_message')
+            .eq('id', queueEntry.id)
+            .single();
+
+          if (qRow?.render_status === 'complete' && qRow.final_render_url) {
+            resolved = true;
+            await finalizeReel(qRow.final_render_url);
+            break;
+          }
+          if (qRow?.render_status === 'failed') {
+            resolved = true;
+            await updateCreative(creative.id, { status: 'failed' });
+            await replaceStatusTag(creative.id, 'failed');
+            toast.error('Render failed', { description: qRow.error_message || 'Unknown error' });
+            break;
+          }
+        }
+        if (!resolved) {
+          toast.error('Render is taking longer than expected', {
+            description: 'It will appear in your Media Library once the worker finishes.',
+          });
+        }
       }
-      
+
     } catch (err) {
       console.error('[ReelBuilder] Render failed:', err);
       toast.error('Render failed', { 

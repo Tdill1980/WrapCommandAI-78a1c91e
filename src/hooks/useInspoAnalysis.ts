@@ -103,7 +103,8 @@ export function useInspoAnalysis() {
           .from("organization_members")
           .select("organization_id")
           .eq("user_id", user.id)
-          .single();
+          .limit(1)
+          .maybeSingle();
         organizationId = orgMember?.organization_id;
       }
 
@@ -118,9 +119,15 @@ export function useInspoAnalysis() {
         return null;
       }
 
-      toast.success("Video analyzed successfully!");
+      // The function reports whether it actually decoded the video. If not,
+      // the "analysis" is an ungrounded guess — say so instead of celebrating.
+      if (data?.videoWasSeen === false) {
+        toast.warning("Couldn't fetch the actual video from that link — results are a rough guess");
+      } else {
+        toast.success("Video analyzed successfully!");
+      }
       queryClient.invalidateQueries({ queryKey: ["inspo-history"] });
-      
+
       return data.analysis as StyleAnalysis;
     } catch (err) {
       console.error("Analysis error:", err);

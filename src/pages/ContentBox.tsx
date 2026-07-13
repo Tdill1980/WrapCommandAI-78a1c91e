@@ -456,8 +456,10 @@ export default function ContentBox() {
     try {
       const result = await repurposeContent.mutateAsync({
         brand: params.brand as string || 'wpw',
-        source_url: params.source_url as string || params.file_url as string,
+        organizationId: params.organizationId as string | undefined,
         source_type: params.source_type as string || 'video',
+        source_filename: params.source_filename as string | undefined,
+        source_tags: params.source_tags as string[] | undefined,
         source_transcript: params.source_transcript as string,
         target_formats: params.target_formats as string[] || params.formats as string[],
         enhancements: params.enhancements as string[]

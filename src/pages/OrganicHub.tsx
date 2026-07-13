@@ -93,30 +93,38 @@ export default function OrganicHub() {
     },
   ];
 
-  // Fetch real stats from content_queue (actual content pipeline)
+  // Fetch real stats from content_queue (actual content pipeline).
+  // NOTE: the pipeline's real status vocabulary is draft / review /
+  // needs_review / approved / scheduled / deployed / failed — nothing ever
+  // writes "completed"/"pending"/"processing", which is why these tiles were
+  // permanently 0. Count the statuses that actually exist, and surface query
+  // errors instead of silently rendering 0.
+  const IN_PIPELINE = ["draft", "review", "needs_review"];
+  const DONE = ["approved", "scheduled", "deployed"];
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["organic-hub-stats"],
     queryFn: async () => {
-      // Creatives = items in pipeline (draft, pending, processing)
-      const { count: creativesCount } = await contentDB
+      const { count: creativesCount, error: e1 } = await contentDB
         .from("content_queue")
         .select("*", { count: "exact", head: true })
-        .in("status", ["draft", "pending", "processing"]);
+        .in("status", IN_PIPELINE);
+      if (e1) throw e1;
 
-      // Completed count
-      const { count: completedCount } = await contentDB
+      const { count: completedCount, error: e2 } = await contentDB
         .from("content_queue")
         .select("*", { count: "exact", head: true })
-        .eq("status", "completed");
+        .in("status", DONE);
+      if (e2) throw e2;
 
-      // This week's completed
+      // This week = anything created in the last 7 days (pipeline throughput)
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
-      const { count: weekCount } = await contentDB
+      const { count: weekCount, error: e3 } = await contentDB
         .from("content_queue")
         .select("*", { count: "exact", head: true })
-        .eq("status", "completed")
-        .gte("updated_at", weekAgo.toISOString());
+        .gte("created_at", weekAgo.toISOString());
+      if (e3) throw e3;
 
       return {
         reelsCreated: creativesCount || 0,
@@ -297,7 +305,7 @@ export default function OrganicHub() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Recent Reels</h2>
-          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => navigate("/content-calendar")}>
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => navigate("/organic/reel-vault")}>
             View Reel Vault →
           </Button>
         </div>

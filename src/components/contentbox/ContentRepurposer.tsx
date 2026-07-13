@@ -73,8 +73,10 @@ export function ContentRepurposer({ selectedFile, onRepurpose, processing }: Con
     try {
       const data = await onRepurpose({
         brand: selectedFile.brand,
-        source_url: selectedFile.file_url,
+        organizationId: (selectedFile as Record<string, unknown>).organization_id,
         source_type: selectedFile.file_type,
+        source_filename: selectedFile.original_filename || undefined,
+        source_tags: selectedFile.tags || undefined,
         source_transcript: selectedFile.transcript || undefined,
         target_formats: selectedFormats,
         enhancements: selectedEnhancements
@@ -250,7 +252,7 @@ export function ContentRepurposer({ selectedFile, onRepurpose, processing }: Con
       </Button>
 
       {/* Results Display */}
-      {result && result.formats && (
+      {result && result.formats && result.formats.length > 0 && (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -264,22 +266,24 @@ export function ContentRepurposer({ selectedFile, onRepurpose, processing }: Con
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {Object.entries(result.formats).map(([formatId, content]) => (
+            {result.formats.map((content) => {
+              const formatId = content.format_id || content.format_name;
+              return (
               <div key={formatId} className="bg-muted p-3 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <Badge variant="secondary">{formatId.toUpperCase()}</Badge>
-                  <span className="text-xs text-muted-foreground">{content.duration_recommendation}</span>
+                  <Badge variant="secondary">{(content.format_name || formatId).toUpperCase()}</Badge>
+                  <span className="text-xs text-muted-foreground">{content.estimated_duration}</span>
                 </div>
-                
+
                 {/* Hook */}
                 <div className="mb-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-foreground">Hook</span>
-                    <Button size="sm" variant="ghost" className="h-6" onClick={() => copyToClipboard(content.hook, `${formatId}-hook`)}>
+                    <Button size="sm" variant="ghost" className="h-6" onClick={() => copyToClipboard(content.hook_line, `${formatId}-hook`)}>
                       {copiedKey === `${formatId}-hook` ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">{content.hook}</p>
+                  <p className="text-xs text-muted-foreground">{content.hook_line}</p>
                 </div>
 
                 {/* Script */}
@@ -306,17 +310,17 @@ export function ContentRepurposer({ selectedFile, onRepurpose, processing }: Con
 
                 {/* Hashtags */}
                 <div className="flex flex-wrap gap-1">
-                  {content.hashtags.slice(0, 5).map((tag, i) => (
+                  {(content.hashtags || []).slice(0, 5).map((tag, i) => (
                     <Badge key={i} variant="outline" className="text-[10px]">{tag}</Badge>
                   ))}
                 </div>
 
                 {/* Thumbnail Titles */}
-                {content.thumbnail_titles && content.thumbnail_titles.length > 0 && (
+                {content.thumbnail_texts && content.thumbnail_texts.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-border">
                     <span className="text-xs font-medium text-foreground">Thumbnail Titles</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {content.thumbnail_titles.map((title, i) => (
+                      {content.thumbnail_texts.map((title, i) => (
                         <Badge key={i} className="text-[10px] cursor-pointer" onClick={() => copyToClipboard(title, `${formatId}-thumb-${i}`)}>
                           {title}
                         </Badge>
@@ -325,7 +329,8 @@ export function ContentRepurposer({ selectedFile, onRepurpose, processing }: Con
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}

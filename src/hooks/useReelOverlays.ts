@@ -110,7 +110,7 @@ export function useReelOverlays() {
     setActivePack(null);
   }, []);
 
-  const exportForCreatomate = useCallback(() => {
+  const exportForRender = useCallback(() => {
     return overlays.map((overlay) => ({
       text: overlay.text,
       position: overlay.position,
@@ -130,6 +130,6 @@ export function useReelOverlays() {
     updateOverlay,
     removeOverlay,
     clearOverlays,
-    exportForCreatomate,
+    exportForRender,
   };
 }
