@@ -401,36 +401,42 @@ serve(async (req) => {
 Return ONLY the JSON, no markdown.`
       : `Transcribe this audio. Return ONLY the transcription text, nothing else.`;
 
-    // Send to Lovable Gateway
+    // Use the native Gemini endpoint with inline_data. The OpenAI-compat route's
+    // `image_url` field does NOT decode audio (it silently returns garbage) —
+    // see transcribe-audio/index.ts for the same fix.
+    // Gemini's inline_data decodes both audio/* and video/* natively — pass the
+    // real content type through so a direct video URL (video/mp4) still works.
+    const inlineMime = typeof mimeType === 'string' && /^(audio|video)\//.test(mimeType)
+      ? mimeType
+      : 'audio/mp3';
+
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GEMINI_API_KEY}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-2.5-flash",
-          messages: [{
+          contents: [{
             role: "user",
-            content: [
-              { type: "text", text: transcriptionPrompt },
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${audioBase64}` } }
+            parts: [
+              { text: transcriptionPrompt },
+              { inline_data: { mime_type: inlineMime, data: audioBase64 } }
             ]
-          }]
+          }],
+          generationConfig: { temperature: 0 }
         }),
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Lovable API error:', errorText);
+      console.error('Gemini API error:', errorText);
       throw new Error(`Transcription failed: ${errorText}`);
     }
 
-    const lovableResult = await response.json();
-    const textContent = lovableResult?.choices?.[0]?.message?.content || "";
+    const geminiResult = await response.json();
+    const textContent =
+      geminiResult?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
     console.log('Transcription complete');
 
     // Parse result based on whether timestamps were requested

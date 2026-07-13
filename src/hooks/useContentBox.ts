@@ -89,15 +89,23 @@ export interface AdGenerationResult {
   carousel_slides?: Array<{ headline: string; body: string; cta: string }>;
 }
 
+export interface RepurposeFormat {
+  format_id: string;
+  format_name: string;
+  aspect_ratio?: string;
+  script: string;
+  hook_line: string;
+  caption: string;
+  hashtags: string[];
+  thumbnail_texts?: string[];
+  best_practices?: string;
+  estimated_duration?: string;
+}
+
 export interface RepurposeResult {
-  formats: Record<string, {
-    script: string;
-    hook: string;
-    caption: string;
-    hashtags: string[];
-    thumbnail_titles: string[];
-    duration_recommendation: string;
-  }>;
+  formats: RepurposeFormat[];
+  cross_platform_tips?: string;
+  content_calendar_suggestion?: string;
 }
 
 export function useContentBox() {
@@ -211,11 +219,10 @@ export function useContentBox() {
           }).catch(err => console.error('Auto-analyze video failed:', err));
         }
 
-        if (fileType === 'image') {
-          lovableFunctions.functions.invoke('ai-analyze-image', {
-            body: { content_file_id: data.id }
-          }).catch(err => console.error('Auto-analyze image failed:', err));
-        }
+        // NOTE: images are not auto-tagged on upload — there is no `ai-analyze-image`
+        // edge function. (`analyze-inspo-image` is style extraction and writes to a
+        // different table, so it must not be wired here.) Removed the dead invoke
+        // that was silently failing. TODO: add a real image content-tagger.
       }
 
       return data;
@@ -303,21 +310,38 @@ export function useContentBox() {
   const repurposeContent = useMutation({
     mutationFn: async ({
       brand,
-      source_url,
+      organizationId,
       source_type,
+      source_filename,
+      source_tags,
       source_transcript,
       target_formats,
       enhancements
     }: {
       brand: string;
-      source_url: string;
+      organizationId?: string;
       source_type: string;
+      source_filename?: string;
+      source_tags?: string[];
       source_transcript?: string;
       target_formats: string[];
       enhancements?: string[];
     }): Promise<RepurposeResult> => {
+      // The edge function expects sourceFile/targetFormats (camelCase) — sending
+      // source_url/target_formats left it with an empty prompt and lost formats.
       const { data, error } = await lovableFunctions.functions.invoke("ai-repurpose-content", {
-        body: { brand, source_url, source_type, source_transcript, target_formats, enhancements }
+        body: {
+          brand,
+          organizationId,
+          targetFormats: target_formats,
+          enhancements,
+          sourceFile: {
+            file_type: source_type,
+            original_filename: source_filename,
+            tags: source_tags,
+            transcript: source_transcript,
+          },
+        }
       });
 
       if (error) throw error;

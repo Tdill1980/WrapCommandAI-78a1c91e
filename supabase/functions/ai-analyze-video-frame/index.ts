@@ -278,9 +278,9 @@ Return ONLY valid JSON, no explanation.`
         visualTags.has_peel ? 'peel' : null,
         visualTags.has_finished_result ? 'reveal' : null,
       ].filter(Boolean),
-      confidence: (visualTags.wrap_type_category?.confidence || 0 + 
-                   visualTags.wrap_process_stage?.confidence || 0 + 
-                   visualTags.content_origin?.confidence || 0) / 3,
+      confidence: ((visualTags.wrap_type_category?.confidence || 0) +
+                   (visualTags.wrap_process_stage?.confidence || 0) +
+                   (visualTags.content_origin?.confidence || 0)) / 3,
       analyzed_at: new Date().toISOString(),
     };
 

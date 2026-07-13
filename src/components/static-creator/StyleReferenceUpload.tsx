@@ -94,16 +94,19 @@ export function StyleReferenceUpload({
 
         if (analysisError) throw analysisError;
 
-        if (analysisData?.analysis) {
+        // analyze-inspo-image nests the style spec under analysis.rendering.*
+        // (not at the top level), and uses hook_position / text_alignment.
+        const rendering = analysisData?.analysis?.rendering;
+        if (rendering) {
           const style: ExtractedStyle = {
-            font_headline: analysisData.analysis.font_headline,
-            font_body: analysisData.analysis.font_body,
-            primary_text_color: analysisData.analysis.primary_text_color,
-            accent_color: analysisData.analysis.accent_color,
-            background_style: analysisData.analysis.background_style,
-            text_position: analysisData.analysis.text_position,
-            text_animation: analysisData.analysis.text_animation,
-            layout: analysisData.analysis.layout,
+            font_headline: rendering.font_headline,
+            font_body: rendering.font_body,
+            primary_text_color: rendering.primary_text_color,
+            accent_color: rendering.accent_color,
+            background_style: rendering.background_style,
+            text_position: rendering.hook_position,
+            text_animation: rendering.text_animation,
+            layout: rendering.text_alignment,
           };
           setExtractedStyle(style);
           onStyleExtracted?.(style, publicUrl);
