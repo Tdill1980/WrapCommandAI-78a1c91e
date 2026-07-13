@@ -17,7 +17,7 @@ export function useWebsiteChatAnalytics() {
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('direction', 'outbound')
-        .in('sender_name', ['Ace', 'WPW Team', 'Jordan Lee']);
+        .in('sender_name', ['Wrap Guru', 'Ace', 'WPW Team', 'Jordan Lee']);
 
       // Get quotes generated from website chat
       const { data: quotes } = await supabase

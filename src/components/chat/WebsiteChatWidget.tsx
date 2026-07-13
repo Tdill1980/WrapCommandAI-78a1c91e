@@ -62,7 +62,7 @@ export function WebsiteChatWidget() {
         {
           id: "welcome",
           role: "assistant",
-          content: "Hey, I'm Ace with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team. What are you working on?",
+          content: "Hey, I'm the Wrap Guru with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team. What are you working on?",
         },
       ]);
     }
@@ -189,9 +189,9 @@ export function WebsiteChatWidget() {
         style={{
           boxShadow: "0 4px 20px rgba(124, 58, 237, 0.4), 0 0 40px rgba(37, 99, 235, 0.2)"
         }}
-        aria-label="Chat with Ace"
+        aria-label="Chat with the Wrap Guru"
       >
-        <img src={aceAvatar} alt="Ace" className="w-11 h-11 relative z-10 object-contain drop-shadow" />
+        <img src={aceAvatar} alt="Wrap Guru" className="w-11 h-11 relative z-10 object-contain drop-shadow" />
       </button>
     );
   }
@@ -217,10 +217,10 @@ export function WebsiteChatWidget() {
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center ring-2 ring-white/30 shadow-lg backdrop-blur-sm overflow-hidden">
-              <img src={aceAvatar} alt="Ace" className="w-9 h-9 object-contain" />
+              <img src={aceAvatar} alt="Wrap Guru" className="w-9 h-9 object-contain" />
             </div>
             <div>
-              <span className="font-bold text-white block text-base tracking-tight">Ace</span>
+              <span className="font-bold text-white block text-base tracking-tight">Wrap Guru</span>
               <span className="text-white/90 text-xs flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
                 WePrintWraps × RestyleProAI • Online

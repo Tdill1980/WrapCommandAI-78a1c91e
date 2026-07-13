@@ -800,7 +800,7 @@
       <div class="wcai-chat-header">
         <div class="wcai-chat-header-avatar">🧑‍🚀</div>
         <div class="wcai-chat-header-info">
-          <h3>Ace</h3>
+          <h3>Wrap Guru</h3>
           <p><span class="wcai-live-dot"></span> WePrintWraps × RestyleProAI • Online</p>
         </div>
         <button class="wcai-chat-reset" id="wcai-reset" title="Start a new conversation">
@@ -1027,9 +1027,9 @@
     const name = collectedName ? collectedName.split(' ')[0] : '';
     let welcomeText;
     if (name) {
-      welcomeText = `Hey ${name}, I'm Ace with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.`;
+      welcomeText = `Hey ${name}, I'm the Wrap Guru with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.`;
     } else {
-      welcomeText = "Hey, I'm Ace with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.";
+      welcomeText = "Hey, I'm the Wrap Guru with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team.";
     }
     typeMessage(welcomeMessage, welcomeText, 25);
   }

@@ -332,7 +332,7 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
           organization_id: ORG_ID,
           to_email: routeTo,
           cc_email: routeCc,
-          subject: `[Ace • WPW] ${type.toUpperCase()} — ${input.customer_name || 'Website visitor'}`,
+          subject: `[Wrap Guru • WPW] ${type.toUpperCase()} — ${input.customer_name || 'Website visitor'}`,
           reason: input.reason || `${type} escalation from website chat`,
           context: `Escalation type: ${type} → route to ${member.name} (${member.role})\n` +
             `Customer: ${input.customer_name || 'unknown'} | ${input.customer_email || 'no email'} | ${input.customer_phone || 'no phone'}\n` +
@@ -565,14 +565,14 @@ serve(async (req) => {
     }
 
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
-    const prompt = `You are Ace, the WePrintWraps wrap concierge (weprintwraps.com) — a WePrintWraps × RestyleProAI assistant. WePrintWraps is a PRINT SHOP ONLY (no installation).
+    const prompt = `You are the Wrap Guru, the WePrintWraps wrap concierge (weprintwraps.com) — a WePrintWraps × RestyleProAI assistant. WePrintWraps is a PRINT SHOP ONLY (no installation).
 
 YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
 
 IDENTITY:
-- Your name is Ace. Greet people as Ace ("Hey, I'm Ace with WePrintWraps").
-- You work with the WePrintWraps team — speak as "we"/"us" for the shop, and "I" as Ace.
-- WePrintWraps × RestyleProAI: if asked, you're Ace, the WPW wrap assistant powered by RestyleProAI. Keep it warm and human, never robotic.
+- Your name is the Wrap Guru. Greet people as the Wrap Guru ("Hey, I'm the Wrap Guru with WePrintWraps").
+- You work with the WePrintWraps team — speak as "we"/"us" for the shop, and "I" as the Wrap Guru.
+- WePrintWraps × RestyleProAI: if asked, you're the Wrap Guru, the WPW wrap assistant powered by RestyleProAI. Keep it warm and human, never robotic.
 - Don't over-explain what you are — just help.
 
 VOICE RULES (STRICT):
@@ -838,7 +838,7 @@ Contact: hello@weprintwraps.com`;
       channel: 'website',
       direction: 'outbound',
       content: reply,
-      sender_name: 'Ace',
+      sender_name: 'Wrap Guru',
       created_at: replyTime
     });
 
