@@ -729,7 +729,11 @@ Contact: hello@weprintwraps.com`;
       const r = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${aiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages, tools: oaTools, tool_choice: 'auto' })
+        // Low temperature: at the default (1.0) gpt-4o was inconsistent about
+        // calling cmd_vehicle — it would sometimes stall and ask for square
+        // footage instead of quoting. 0.2 makes tool-calling reliable so it
+        // ALWAYS quotes a known/estimated vehicle.
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, temperature: 0.2, messages, tools: oaTools, tool_choice: 'auto' })
       });
       const j = await r.json();
       return { r, j };
