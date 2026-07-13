@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect } from "react";
+import { useOrganization } from "@/contexts/OrganizationContext";
 
 export interface ChatConversation {
   id: string;
@@ -84,8 +85,9 @@ export function useConversationTotalCount() {
 }
 
 export function useWebsiteChats() {
+  const { organizationId } = useOrganization();
   const query = useQuery({
-    queryKey: ['website-page-chats'],
+    queryKey: ['website-page-chats', organizationId],
     queryFn: async (): Promise<ChatConversation[]> => {
       // Use WePrintWraps Supabase directly (qxllysilzonrlyoaomce)
       const WPW_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
@@ -100,7 +102,8 @@ export function useWebsiteChats() {
             'apikey': WPW_ANON,
             'Authorization': `Bearer ${WPW_ANON}`,
           },
-          body: JSON.stringify({ channel: 'website' })
+          // Tenant isolation: only this org's chats (SaaS — WPW is tenant #1).
+          body: JSON.stringify({ channel: 'website', organization_id: organizationId })
         }
       );
 

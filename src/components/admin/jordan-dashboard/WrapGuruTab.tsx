@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileSearch, AlertTriangle, CheckCircle, Car, ExternalLink, RefreshCw } from "lucide-react";
@@ -48,13 +49,17 @@ function ScoreBadge({ score }: { score: number | null }) {
 }
 
 export function WrapGuruTab() {
+  const { organizationId } = useOrganization();
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["wrapguru-artwork-analyses"],
+    queryKey: ["wrapguru-artwork-analyses", organizationId],
     queryFn: async (): Promise<AnalysisRow[]> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("ai_actions")
         .select("id, created_at, resolved, action_payload")
-        .eq("action_type", "artwork_review")
+        .eq("action_type", "artwork_review");
+      // Tenant isolation (SaaS): only this org's file analyses.
+      if (organizationId) q = q.eq("organization_id", organizationId);
+      const { data, error } = await q
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
