@@ -73,10 +73,11 @@
 
   // QUICK ACTIONS — 4 buttons
   const quickActions = [
-    { id: 'quote', text: 'How much is my wrap project?', icon: '🚗', primary: true, message: 'How much is my wrap project?' },
+    { id: 'quote', text: 'Get a wrap price', icon: '💲', primary: true, message: 'How much is my wrap project?' },
+    { id: 'check-file', text: 'Check my file', icon: '📎', message: '' },
+    { id: 'ticket', text: 'Open a trouble ticket', icon: '🎫', message: 'I have a problem and need to open a support ticket — please have a rep reach out to me.' },
     { id: 'order', text: 'Check my order status', icon: '📦', message: 'I need to check on my order status' },
-    { id: 'restyle', text: 'Ask about RestyleProAI', icon: '🎨', message: 'Tell me about RestyleProAI and how it can help visualize my wrap' },
-    { id: 'rep', text: 'Talk to a rep (rush job / issue)', icon: '🙋', message: 'I have a rush job or a real issue and would like a rep to contact me as soon as possible.' }
+    { id: 'restyle', text: 'Ask about RestyleProAI', icon: '🎨', message: 'Tell me about RestyleProAI and how it can help visualize my wrap' }
   ];
 
   // Geo data
@@ -744,11 +745,18 @@
 
     @media (max-width: 480px) {
       .wcai-chat-window {
-        width: calc(100vw - 40px);
-        max-height: calc(100vh - 120px);
-        bottom: 70px;
-        right: -10px;
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        width: auto;
+        max-width: none;
+        max-height: 72vh;
+        bottom: 92px;
       }
+      /* keep header controls from overflowing on narrow screens */
+      .wcai-chat-header h3 { font-size: 16px; }
+      .wcai-chat-reset { padding: 5px 8px; font-size: 12px; }
+      .wcai-message { max-width: 88%; }
     }
   `;
 

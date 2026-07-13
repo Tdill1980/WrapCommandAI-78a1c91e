@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, Send, Car, Palette, Package, Mic, Loader2 } from "lucide-react";
+import { X, Send, Package, Mic, Loader2, DollarSign, FileText, LifeBuoy, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase, callEdgeFunction } from "@/integrations/supabase/production-client";
 import { cn } from "@/lib/utils";
@@ -14,9 +14,11 @@ interface Message {
 }
 
 const QUICK_ACTIONS = [
-  { icon: Car, label: "How much is my wrap project?", message: "How much is my wrap project?", primary: true },
-  { icon: Package, label: "How do I order?", message: "How do I place an order?" },
-  { icon: Palette, label: "Ask me about RestyleProAI", message: "Tell me about RestyleProAI and how it can help visualize my wrap" },
+  { icon: DollarSign, label: "Get a wrap price", message: "How much is my wrap project?", primary: true },
+  { icon: FileText, label: "Check my file", message: "Can you check if my artwork file is print-ready? I'd like to upload it for a quick review." },
+  { icon: LifeBuoy, label: "Open a trouble ticket", message: "I have a problem and need to open a support ticket — please have a rep reach out to me." },
+  { icon: Package, label: "Check my order status", message: "I need to check on my order status" },
+  { icon: Palette, label: "Ask about RestyleProAI", message: "Tell me about RestyleProAI and how it can help visualize my wrap" },
 ];
 
 export function WebsiteChatWidget() {
