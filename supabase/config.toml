@@ -27,6 +27,10 @@ verify_jwt = false
 [functions.convert-print]
 verify_jwt = false
 
+# Public so Stripe's browser redirect can hit ?action=fulfill without a JWT.
+[functions.wrapguru-shopflow]
+verify_jwt = false
+
 [functions.approveflow-event]
 verify_jwt = false
 
