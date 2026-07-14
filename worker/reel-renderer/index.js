@@ -45,6 +45,19 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 }
 const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
+// Startup diagnostic: confirm which project the secrets point at and whether
+// the queue is visible — a silent zero here means wrong project or a query
+// error that claimNext() would otherwise swallow.
+{
+  const ref = (SUPABASE_URL.match(/https:\/\/([a-z0-9]+)\./) || [])[1] || "unknown";
+  db.from("reel_render_jobs")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "queued")
+    .then(({ count, error }) => {
+      console.log(`[reel-renderer] diag project=${ref} queued=${count} err=${error ? error.message : "none"}`);
+    });
+}
+
 let running = false;
 
 // ── ffmpeg helpers ──────────────────────────────────────────────────────────
