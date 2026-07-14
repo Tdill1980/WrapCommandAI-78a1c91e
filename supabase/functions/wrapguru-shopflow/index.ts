@@ -27,7 +27,7 @@ const corsHeaders = {
 const BRIDGE_URL = "https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge";
 
 const SERVICE_LABEL: Record<string, string> = {
-  upscale: "Print-Ready Upscale (4×)",
+  upscale: "Print-Ready Prep (4×)",
   cutpath: "Cut-Path / Contour Setup",
   recreate: "AI Design Recreate",
   production_pack: "Production Pack",

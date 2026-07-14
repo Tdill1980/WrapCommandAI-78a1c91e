@@ -173,7 +173,7 @@ quantity = sqft for per-sqft products, yards for by-the-yard, units for flat ite
   {
     name: "cmd_fix",
     description: `Offer/create a PAID file fix through ShopFlow. Use AFTER a "Check my file" run flags an issue and the customer wants us to fix it. Returns a secure Stripe checkout link. Pull this lever instead of just telling them to email us.
-fix_key options: upscale (low-res/DPI, automatic 4× upscale, $49), cutpath ($199), recreate (AI design from a reference, $199), production_pack ($299). Omit fix_key to let ShopFlow pick from the detected issues.`,
+fix_key options: upscale = "Print-Ready Prep" (low-res/DPI, automatic 4× upscale, $199), cutpath ($199), recreate (AI design from a reference, $199), production_pack ($299). Omit fix_key to let ShopFlow pick from the detected issues.`,
     input_schema: { type: "object", properties: { fix_key: { type: "string", description: "upscale | cutpath | recreate | production_pack. Optional." } }, required: [] }
   },
   {
@@ -402,7 +402,7 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
   if (name === 'cmd_fix') {
     const SHOPFLOW_BRIDGE = 'https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge';
     const SERVICE_LABEL: Record<string, string> = {
-      upscale: 'Print-Ready Upscale (4×)', cutpath: 'Cut-Path / Contour Setup',
+      upscale: 'Print-Ready Prep (4×)', cutpath: 'Cut-Path / Contour Setup',
       recreate: 'AI Design Recreate', production_pack: 'Production Pack',
     };
     const sid = context?.session_id;
@@ -765,7 +765,7 @@ DESIGN HELP ("I need a design"):
 FILE FIXES (ShopFlow — you can actually fix their file, not just advise):
 - After a "Check my file" run flags a problem (low score, low-res/upscale needed, needs a cut path, or they want a design recreated), DON'T just tell them to email us. Offer to fix it and pull the lever with cmd_fix.
 - cmd_fix returns a secure checkout link + price. Give them the link plainly. For an upscale it's processed AUTOMATICALLY after payment; the others our team finishes fast. Either way we email them the finished file.
-- Services: upscale ($49, automatic 4× print-ready upscale), cutpath ($199), recreate a design ($199), production_pack ($299). If unsure which, call cmd_fix with no fix_key and we'll pick based on what the file check found (low-res/DPI → upscale).
+- Services: upscale = "Print-Ready Prep" ($199, automatic 4× print-ready upscale), cutpath ($199), recreate a design ($199), production_pack ($299). If unsure which, call cmd_fix with no fix_key and we'll pick based on what the file check found (low-res/DPI → upscale). Always state the price from the tool result, not from memory.
 - We need their email and a file on record from a "Check my file" run before setting up a fix. If either is missing, get it first.
 
 CONTACT COLLECTION:
