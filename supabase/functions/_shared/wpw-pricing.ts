@@ -41,18 +41,18 @@ export const WPW_PRICING = {
   flatPrice: {
     customDesign: {
       name: "Custom Vehicle Wrap Design",
-      price: 750,
+      price: 975,
       description: "Full custom professional design",
       wooProductId: 234
     },
     designSetup: {
       name: "Design Setup / File Output",
-      price: 50,
+      price: 199,
       description: "File preparation and output"
     },
     hourlyDesign: {
       name: "Hourly Design Work",
-      pricePerHour: 150,
+      pricePerHour: 90,
       description: "Per hour design services"
     }
   },

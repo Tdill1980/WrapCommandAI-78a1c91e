@@ -45,8 +45,8 @@ const WPW_PRODUCTS: Record<string, { id: number; name: string; price: number; ty
   wicked_wild:   { id: 4181,  name: 'Wicked & Wild (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-wicked-wild-wrap-prints/' },
   bape_camo:     { id: 42809, name: 'Bape Camo (by the yard)',       price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-bape-camo/' },
   modern_trippy: { id: 52489, name: 'Modern & Trippy (by the yard)', price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-modern-trippy/' },
-  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 750,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
-  design_output: { id: 58160, name: 'Design / File Output',          price: 95,    type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 975,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
+  design_output: { id: 58160, name: 'Design Setup / File Output',    price: 199,   type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
 };
 
 // Escalation routing — the WPW management team (problem tickets forward here)
@@ -88,12 +88,12 @@ function cartUrl(productId: number, qty = 1): string {
 }
 
 const KNOWLEDGE: Record<string, string> = {
-  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design from $750. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
+  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design $975, design setup/file output $199, hourly design $90/hr. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
   products: 'We print full vehicle wraps (Avery/3M), contour-cut graphics/decals/labels, perforated window vinyl, wall wraps, pre-designed wrap-by-the-yard patterns, and custom design. Print & ship only — no installation.',
   shipping: 'Orders ship in 1-2 business days. Free shipping on orders $750+. Add to cart and enter your zip for an instant shipping price.',
   turnaround: 'Print production is 1-2 business days, then it ships.',
   file_upload: 'Upload artwork at checkout or email hello@weprintwraps.com for a free print-readiness review. Send PDF/AI/EPS at full scale.',
-  design_services: 'No artwork? Custom vehicle wrap design starts at $750; design/file output help is $95. Email design@weprintwraps.com.',
+  design_services: 'No artwork? Custom vehicle wrap design is $975; design setup/file output is $199; hourly design work is $90/hr. Email design@weprintwraps.com.',
   guarantee: 'We print on genuine 3M and Avery media with UV inks, made in the USA.',
   contact: 'hello@weprintwraps.com for general questions, design@weprintwraps.com for design.',
   installation: 'We are print & ship ONLY — we do not install. We can point you to install resources.',
@@ -142,7 +142,7 @@ const TOOLS = [
 VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.95), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
-DESIGN (flat): custom_design ($750), design_hour ($95), file_output ($95)
+DESIGN (flat): custom_design ($975), design_hour ($90/hr), file_output ($199)
 SAMPLES (flat): pantone ($42), camo_sample, marble_sample, wicked_sample ($26.50 each)
 PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xlarge ($899)`,
     input_schema: {
@@ -160,8 +160,8 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   },
   {
     name: "cmd_quote",
-    description: "Create quote and send email. Use ONLY after: name + email + phone + vehicle/product + price are ALL confirmed.",
-    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_name", "customer_email", "vehicle", "sqft", "price"] }
+    description: "Save the quote AND email it to the customer. This also enrolls them in follow-up/retargeting. Call this the MOMENT you have their email + the vehicle/price — do NOT wait for name or phone (those are optional and the backend fills a default). We ALWAYS email a quote once we have an email.",
+    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_email", "vehicle", "sqft", "price"] }
   },
   {
     name: "cmd_cart",
@@ -169,6 +169,12 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
 product keys: avery_wrap, 3m_wrap, cut_avery, cut_3m, window_perf, wall_wrap, camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy, custom_design, design_output. Default: avery_wrap.
 quantity = sqft for per-sqft products, yards for by-the-yard, units for flat items.`,
     input_schema: { type: "object", properties: { product: { type: "string", description: "Product key from the list" }, quantity: { type: "number", description: "Qty (sqft/yards/units). Default 1." } }, required: [] }
+  },
+  {
+    name: "cmd_fix",
+    description: `Offer/create a PAID file fix through ShopFlow. Use AFTER a "Check my file" run flags an issue and the customer wants us to fix it. Returns a secure Stripe checkout link. Pull this lever instead of just telling them to email us.
+fix_key options: upscale = "Print-Ready Prep" (low-res/DPI, automatic 4× upscale, $199), cutpath ($199), recreate (AI design from a reference, $199), production_pack ($299). Omit fix_key to let ShopFlow pick from the detected issues.`,
+    input_schema: { type: "object", properties: { fix_key: { type: "string", description: "upscale | cutpath | recreate | production_pack. Optional." } }, required: [] }
   },
   {
     name: "cmd_order",
@@ -206,7 +212,7 @@ quantity = sqft for per-sqft products, yards for by-the-yard, units for flat ite
   }
 ];
 
-async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string; product_key?: string }): Promise<any> {
+async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string; product_key?: string; session_id?: string }): Promise<any> {
   // Handle cmd_update_contact locally (updates command_contacts)
   if (name === 'cmd_update_contact') {
     console.log(`[CommandChat] Updating contact:`, JSON.stringify(input));
@@ -386,6 +392,74 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     const result = await res.json();
     console.log(`[Ace] cmd_quote result:`, JSON.stringify(result));
     return result;
+  }
+
+  // cmd_fix — pay-then-process file fix via RestylePro's shopflow-bridge.
+  // Finds the customer's most recent "Check my file" result for this session,
+  // creates a job on the bridge (which owns Stripe + processing), and hands
+  // back the checkout link. Delivery of the finished file happens via the
+  // bridge's callback to wrapguru-shopflow?action=callback.
+  if (name === 'cmd_fix') {
+    const SHOPFLOW_BRIDGE = 'https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge';
+    const SERVICE_LABEL: Record<string, string> = {
+      upscale: 'Print-Ready Prep (4×)', cutpath: 'Cut-Path / Contour Setup',
+      recreate: 'AI Design Recreate', production_pack: 'Production Pack',
+    };
+    const sid = context?.session_id;
+    if (!sid) return { needs_file: true, message: 'Ask them to run "Check my file" first so I have their file.' };
+    const rows = await dbQuery(baseUrl, key, 'ai_actions',
+      `action_type=eq.artwork_review&action_payload->>session_id=eq.${encodeURIComponent(sid)}&select=action_payload&order=created_at.desc&limit=1`);
+    const art = Array.isArray(rows) && rows[0]?.action_payload ? rows[0].action_payload : null;
+    if (!art?.file_url) return { needs_file: true, message: 'I don\'t have a file on record yet — run "Check my file" and I\'ll set up the fix.' };
+    const email = art.customer_email || context?.email || null;
+    if (!email) return { needs_email: true, message: 'I need the customer\'s email before setting up the fix — ask for it, then try again.' };
+
+    // Map the chosen fix / detected issues -> bridge service name.
+    const issuesText = (art?.ai_precheck?.quick_issues || []).join(' ').toLowerCase();
+    const score = art?.ai_precheck?.preliminary_score ?? null;
+    let service = String(input.fix_key || '').toLowerCase();
+    // accept legacy keys / free text
+    if (service === 'print_prep') service = 'upscale';
+    if (service === 'cut_path') service = 'cutpath';
+    if (!['upscale', 'cutpath', 'recreate', 'production_pack'].includes(service)) {
+      if (/cut|contour|outline/.test(issuesText)) service = 'cutpath';
+      else if (/recreate|redesign|from.*reference/.test(issuesText)) service = 'recreate';
+      else service = 'upscale'; // low-res/dpi/raster/rgb or generic -> automatic upscale
+    }
+
+    const vehicleStr = art.vehicle_info
+      ? `${art.vehicle_info.year || ''} ${art.vehicle_info.make || ''} ${art.vehicle_info.model || ''}`.trim()
+      : '';
+
+    const r = await fetch(SHOPFLOW_BRIDGE, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create', service,
+        file_url: art.file_url, email,
+        vehicle: vehicleStr || undefined,
+        notes: `WrapGuru chat • score ${score ?? '?'}/10 • ${art.file_name || ''}`,
+        callback_url: `${baseUrl}/functions/v1/wrapguru-shopflow?action=callback`,
+        return_url: 'https://weprintwraps.com/?shopflow=success',
+      }),
+    });
+    const rj = await r.json().catch(() => ({}));
+    if (!rj.ok || !rj.checkout_url) return { success: false, error: rj.error || 'shopflow_create_failed', message: 'I couldn\'t set up that fix just now — I\'ll have our team follow up by email.' };
+
+    // Store the delivery mapping so the bridge callback can email the customer.
+    await dbInsert(baseUrl, key, 'ai_actions', {
+      action_type: 'shopflow_job', organization_id: ORG_ID, priority: 'high', resolved: false,
+      action_payload: {
+        job_id: rj.job_id, service, price: rj.price, status: 'pending_payment',
+        customer_email: email, customer_name: art.customer_name || null,
+        file_name: art.file_name || null, file_url: art.file_url, session_id: sid,
+      },
+    });
+
+    const label = SERVICE_LABEL[service] || 'file fix';
+    return {
+      success: true, service, label, price: rj.price, job_id: rj.job_id, pay_url: rj.checkout_url,
+      message: `${label} is $${rj.price}. Here's your secure checkout — once it's paid we process it${service === 'upscale' ? ' automatically' : ''} and email you the finished file:\n${rj.checkout_url}`,
+    };
   }
 
   return { error: `Unknown tool ${name}` };
@@ -588,14 +662,15 @@ serve(async (req) => {
     }
 
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
-    const prompt = `You are the Wrap Guru, the WePrintWraps wrap concierge (weprintwraps.com) — a WePrintWraps × RestyleProAI assistant. WePrintWraps is a PRINT SHOP ONLY (no installation).
+    const prompt = `You are the Wrap Guru, the WePrintWraps wrap concierge (weprintwraps.com), powered by WrapCommandAI. WePrintWraps is a PRINT SHOP ONLY (no installation).
 
 YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
 
 IDENTITY:
 - Your name is the Wrap Guru. Greet people as the Wrap Guru ("Hey, I'm the Wrap Guru with WePrintWraps").
 - You work with the WePrintWraps team — speak as "we"/"us" for the shop, and "I" as the Wrap Guru.
-- WePrintWraps × RestyleProAI: if asked, you're the Wrap Guru, the WPW wrap assistant powered by RestyleProAI. Keep it warm and human, never robotic.
+- If asked what you are: you're the Wrap Guru, WePrintWraps' 24/7 wrap assistant, powered by WrapCommandAI. Keep it warm and human, never robotic.
+- Do NOT bring up or name other apps, brands, or platforms (e.g. RestyleProAI) — WrapGuru is the only assistant the customer needs to know about.
 - Don't over-explain what you are — just help.
 
 VOICE RULES (STRICT):
@@ -617,13 +692,13 @@ CUSTOMER STATE:
 - Quote: ${state.quoted_price ? '$' + state.quoted_price : 'Not given'}
 
 CONVERSION MINDSET:
-- Every answer should solve their problem AND include a way to buy
+- Every answer should solve their problem AND move toward the quote
 - Don't just answer questions — guide them to the next step
-- After pricing, make it easy: "Ready to order? Here's the link..."
+- After pricing, the next step is ALWAYS: get their email and send the quote (cmd_quote). Then offer a cart link.
 - Create urgency naturally: "Ships in 1-2 days" / "Free shipping on $750+"
 - Remove friction: answer objections before they ask
 
-PRODUCT URLS (always include the relevant one):
+PRODUCT URLS — REFERENCE ONLY (for spec/info questions; these are product pages, NOT buy links. To let someone buy, use cmd_cart. Do not paste these as the way to order):
 
 FULL WRAPS:
 - Avery printed wrap: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/
@@ -666,32 +741,37 @@ VEHICLE RULE (CRITICAL):
 - Do NOT switch to a different vehicle unless the customer explicitly asks about a new one
 - If the customer mentions a new vehicle, use cmd_vehicle to look it up and update
 
-PRICING FLOW:
-1. Customer mentions vehicle -> use cmd_vehicle to get sqft
-2. After getting sqft -> use cmd_pricing to calculate
-3. Give price + relevant order URL in same message
-4. When they're ready to buy -> use cmd_cart to generate a real add-to-cart link and share it
-5. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+PRICING & QUOTE FLOW (follow this order every time):
+1. Customer mentions vehicle -> use cmd_vehicle to get sqft (it ALWAYS returns one).
+2. Give the price right there in chat: state sqft, whether the roof is included, the $/sqft, and the total for Avery and 3M. Do NOT paste a product-page link as "the quote."
+3. Ask for their email so you can send the full written quote: "What's the best email? I'll send your full quote over." WE ALWAYS EMAIL THE QUOTE.
+4. The MOMENT you have their email, call cmd_quote. That single call saves the quote for our team follow-up/retargeting AND emails it to them (the email already includes a real add-to-cart link). Do not wait for name or phone.
+5. After the quote is emailed, ASK if they'd also like a direct add-to-cart link to order now: "Want me to drop you an add-to-cart link so you can order right now?" Only if they say yes, call cmd_cart and paste the real link it returns.
 
 ALWAYS QUOTE — NEVER STALL:
 - cmd_vehicle ALWAYS returns a sqft (if the exact model isn't in our database it returns a close class-based estimate with is_estimate=true). So you can ALWAYS give a price. Do it.
-- If is_estimate is true, give the ballpark price and add one short line like: "that's a close estimate — we'll confirm exact square footage before we print." Then keep moving toward the order/quote.
+- If is_estimate is true, give the ballpark price and add one short line like: "that's a close estimate — we'll confirm exact square footage before we print." Then keep moving toward the emailed quote.
 - NEVER reply that you "need more info on the square footage" or "need a review step." That's our job on the backend, not the customer's. Give the number.
 
-BUY / CART:
-- When a customer says they're ready, asks "how do I order", "add to cart", "checkout", or "where do I buy", call cmd_cart and give them the link.
-- cmd_cart returns a real weprintwraps.com cart link — paste it plainly so they can click and pay.
+CART LINK RULE:
+- A product-page URL (weprintwraps.com/our-products/...) is NOT a cart link and is NOT how someone buys. Never hand a product page out as the way to order.
+- The ONLY buy link is the one cmd_cart returns (weprintwraps.com/cart/?add-to-cart=...). Only share it AFTER you've asked and they said yes, or if they explicitly ask to buy / add to cart / checkout.
 
-RESTYLEPROAI:
-- If a customer is unsure how a wrap will look, mention RestyleProAI (our AI visualizer) — use cmd_knowledge topic "restyleproai" for details.
+DESIGN HELP ("I need a design"):
+- If a customer needs artwork/a design created (not just a quote), gather the basics conversationally: vehicle, the look/goal they want, and any brand colors or logo.
+- Then route it to our design team with cmd_escalate (escalation_type "design") and confirm warmly: "Got it — I've sent this to our design team and they'll follow up by email to get started." Keep helping in the meantime.
+- We offer custom wrap design ($975), design setup/file output ($199), and hourly design ($90/hr) — mention these if they ask about cost. Do NOT pitch any other product, brand, or app by name; WrapGuru is the only assistant the customer needs to know about.
 
-CONTACT COLLECTION (GET ALL 4):
-- If name is NOT PROVIDED, ask for it naturally
-- If email is NOT PROVIDED, ask for it
-- If phone is "Not provided", ask: "What's the best number to reach you?"
-- Get all 3 before sending the quote
-- AFTER quote sent, ask: "By the way, what's your shop name?" (if not already known)
-- Shop name helps us serve wrap shops better and offer trade pricing
+FILE FIXES (ShopFlow — you can actually fix their file, not just advise):
+- After a "Check my file" run flags a problem (low score, low-res/upscale needed, needs a cut path, or they want a design recreated), DON'T just tell them to email us. Offer to fix it and pull the lever with cmd_fix.
+- cmd_fix returns a secure checkout link + price. Give them the link plainly. For an upscale it's processed AUTOMATICALLY after payment; the others our team finishes fast. Either way we email them the finished file.
+- Services: upscale = "Print-Ready Prep" ($199, automatic 4× print-ready upscale), cutpath ($199), recreate a design ($199), production_pack ($299). If unsure which, call cmd_fix with no fix_key and we'll pick based on what the file check found (low-res/DPI → upscale). Always state the price from the tool result, not from memory.
+- We need their email and a file on record from a "Check my file" run before setting up a fix. If either is missing, get it first.
+
+CONTACT COLLECTION:
+- EMAIL is the only thing required to send a quote — get it, then immediately call cmd_quote. Never hold the emailed quote hostage for a name or phone number.
+- Ask for name naturally if you don't have it, but do it alongside or after the quote — not as a blocker.
+- AFTER the quote is emailed, you can ask for phone ("What's the best number to reach you?") and shop name ("By the way, what's your shop name?" — helps us offer trade pricing). Nice-to-haves, not gates.
 
 PRICING RULES:
 - Avery and 3M wraps are BOTH $5.27/sqft (same price)
@@ -729,7 +809,11 @@ Contact: hello@weprintwraps.com`;
       const r = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${aiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages, tools: oaTools, tool_choice: 'auto' })
+        // Low temperature: at the default (1.0) gpt-4o was inconsistent about
+        // calling cmd_vehicle — it would sometimes stall and ask for square
+        // footage instead of quoting. 0.2 makes tool-calling reliable so it
+        // ALWAYS quotes a known/estimated vehicle.
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, temperature: 0.2, messages, tools: oaTools, tool_choice: 'auto' })
       });
       const j = await r.json();
       return { r, j };
@@ -777,7 +861,7 @@ Contact: hello@weprintwraps.com`;
           input.trigger_message = message_text;
         }
 
-        const r = await execTool(fnName, input, url, key, { email: state.customer_email, product_key: state.product_key });
+        const r = await execTool(fnName, input, url, key, { email: state.customer_email, product_key: state.product_key, session_id });
 
         // Update state from tool results
         if (fnName === 'cmd_update_contact' && r.success && input.shop_name) {
@@ -867,6 +951,9 @@ Contact: hello@weprintwraps.com`;
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': RESTYLE_ANON, 'Authorization': `Bearer ${RESTYLE_ANON}` },
             body: JSON.stringify({
+              // Tenant key — RestylePro must route/save the lead by this org so a
+              // new tenant's leads never land in WPW's pipeline (SaaS, WPW = org #1).
+              organization_id: ORG_ID,
               email: state.customer_email,
               quote: {
                 vehicle: state.vehicle || null,
