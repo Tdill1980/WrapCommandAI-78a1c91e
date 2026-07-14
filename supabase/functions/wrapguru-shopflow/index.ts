@@ -69,9 +69,10 @@ async function emailCustomer(job: any, outputUrls: any) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const u = new URL(req.url);
-  const action = u.searchParams.get("action") || "";
   let body: any = {};
   if (req.method === "POST") { try { body = await req.json(); } catch { body = {}; } }
+  // Accept action from the query string OR the JSON body.
+  const action = u.searchParams.get("action") || body.action || "";
   const supabase = sb();
 
   // ----- CALLBACK: bridge finished a job -> deliver to the customer -----
