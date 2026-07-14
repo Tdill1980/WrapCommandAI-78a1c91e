@@ -45,8 +45,8 @@ const WPW_PRODUCTS: Record<string, { id: number; name: string; price: number; ty
   wicked_wild:   { id: 4181,  name: 'Wicked & Wild (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-wicked-wild-wrap-prints/' },
   bape_camo:     { id: 42809, name: 'Bape Camo (by the yard)',       price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-bape-camo/' },
   modern_trippy: { id: 52489, name: 'Modern & Trippy (by the yard)', price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-modern-trippy/' },
-  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 750,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
-  design_output: { id: 58160, name: 'Design / File Output',          price: 95,    type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 975,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
+  design_output: { id: 58160, name: 'Design Setup / File Output',    price: 199,   type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
 };
 
 // Escalation routing — the WPW management team (problem tickets forward here)
@@ -88,12 +88,12 @@ function cartUrl(productId: number, qty = 1): string {
 }
 
 const KNOWLEDGE: Record<string, string> = {
-  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design from $750. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
+  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design $975, design setup/file output $199, hourly design $90/hr. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
   products: 'We print full vehicle wraps (Avery/3M), contour-cut graphics/decals/labels, perforated window vinyl, wall wraps, pre-designed wrap-by-the-yard patterns, and custom design. Print & ship only — no installation.',
   shipping: 'Orders ship in 1-2 business days. Free shipping on orders $750+. Add to cart and enter your zip for an instant shipping price.',
   turnaround: 'Print production is 1-2 business days, then it ships.',
   file_upload: 'Upload artwork at checkout or email hello@weprintwraps.com for a free print-readiness review. Send PDF/AI/EPS at full scale.',
-  design_services: 'No artwork? Custom vehicle wrap design starts at $750; design/file output help is $95. Email design@weprintwraps.com.',
+  design_services: 'No artwork? Custom vehicle wrap design is $975; design setup/file output is $199; hourly design work is $90/hr. Email design@weprintwraps.com.',
   guarantee: 'We print on genuine 3M and Avery media with UV inks, made in the USA.',
   contact: 'hello@weprintwraps.com for general questions, design@weprintwraps.com for design.',
   installation: 'We are print & ship ONLY — we do not install. We can point you to install resources.',
@@ -142,7 +142,7 @@ const TOOLS = [
 VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.95), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
-DESIGN (flat): custom_design ($750), design_hour ($95), file_output ($95)
+DESIGN (flat): custom_design ($975), design_hour ($90/hr), file_output ($199)
 SAMPLES (flat): pantone ($42), camo_sample, marble_sample, wicked_sample ($26.50 each)
 PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xlarge ($899)`,
     input_schema: {
@@ -686,7 +686,7 @@ CART LINK RULE:
 DESIGN HELP ("I need a design"):
 - If a customer needs artwork/a design created (not just a quote), gather the basics conversationally: vehicle, the look/goal they want, and any brand colors or logo.
 - Then route it to our design team with cmd_escalate (escalation_type "design") and confirm warmly: "Got it — I've sent this to our design team and they'll follow up by email to get started." Keep helping in the meantime.
-- We offer custom wrap design ($750) and design/file output ($95) — mention these if they ask about cost. Do NOT pitch any other product, brand, or app by name; WrapGuru is the only assistant the customer needs to know about.
+- We offer custom wrap design ($975), design setup/file output ($199), and hourly design ($90/hr) — mention these if they ask about cost. Do NOT pitch any other product, brand, or app by name; WrapGuru is the only assistant the customer needs to know about.
 
 CONTACT COLLECTION:
 - EMAIL is the only thing required to send a quote — get it, then immediately call cmd_quote. Never hold the emailed quote hostage for a name or phone number.
