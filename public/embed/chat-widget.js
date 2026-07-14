@@ -71,13 +71,15 @@
   // WPW Logo
   const WPW_LOGO = 'https://weprintwraps.com/cdn/shop/files/WePrintWraps-Logo-White.png?v=1690318107';
 
-  // QUICK ACTIONS — 4 buttons
+  // QUICK ACTIONS — WrapGuru Phase 1 (6 buttons). RestyleProAI is intentionally
+  // NOT surfaced to customers in Phase 1 — WrapGuru is the only thing they meet.
   const quickActions = [
-    { id: 'quote', text: 'Get a wrap price', icon: '💲', primary: true, message: 'How much is my wrap project?' },
-    { id: 'check-file', text: 'Check my file', icon: '📎', message: '' },
-    { id: 'ticket', text: 'Open a trouble ticket', icon: '🎫', message: 'I have a problem and need to open a support ticket — please have a rep reach out to me.' },
-    { id: 'order', text: 'Check my order status', icon: '📦', message: 'I need to check on my order status' },
-    { id: 'restyle', text: 'Ask about RestyleProAI', icon: '🎨', message: 'Tell me about RestyleProAI and how it can help visualize my wrap' }
+    { id: 'quote',      text: 'Get a Quote',      icon: '💰', primary: true, message: 'How much is my wrap project?' },
+    { id: 'check-file', text: 'Check My File',    icon: '📁', message: '' },
+    { id: 'order',      text: 'Track My Order',   icon: '🚚', message: 'I need to check on my order status' },
+    { id: 'design',     text: 'I Need a Design',  icon: '🎨', message: 'I need a custom design for my wrap — can you help me get started?' },
+    { id: 'support',    text: 'Customer Support', icon: '💬', message: 'I need customer support — please connect me with a rep.' },
+    { id: 'product',    text: 'Product Help',     icon: '🛒', message: 'I have a question about your products — can you help?' }
   ];
 
   // Geo data
@@ -809,7 +811,7 @@
         <div class="wcai-chat-header-avatar">🧑‍🚀</div>
         <div class="wcai-chat-header-info">
           <h3>Wrap Guru</h3>
-          <p><span class="wcai-live-dot"></span> WePrintWraps × RestyleProAI • Online</p>
+          <p><span class="wcai-live-dot"></span> Your 24/7 Wrap Assistant • Online</p>
         </div>
         <button class="wcai-chat-reset" id="wcai-reset" title="Start a new conversation">
           ↻ New chat
@@ -852,7 +854,7 @@
         </button>
       </div>
       <div class="wcai-powered">
-        Powered by <strong style="color:#e6007e;">WePrintWraps × RestyleProAI</strong>
+        ⚡ Powered by <strong style="color:#e6007e;">WrapCommandAI</strong>
       </div>
     </div>
     <div class="wcai-bubble-row">
