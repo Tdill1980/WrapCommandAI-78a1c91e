@@ -105,6 +105,121 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// =========================================================================
+// REAL file analysis — actually fetch the bytes and parse true dimensions,
+// embedded DPI, color space, and vector/raster (not guessing from the name).
+// =========================================================================
+interface RealAnalysis {
+  format: string;
+  parsed: boolean;
+  is_vector: boolean;
+  width_px?: number;
+  height_px?: number;
+  embedded_dpi?: number;
+  color_space?: "RGB" | "CMYK" | "Grayscale" | "unknown";
+  page_w_in?: number;
+  page_h_in?: number;
+}
+const u32be = (b: Uint8Array, o: number) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+const u16be = (b: Uint8Array, o: number) => (b[o] << 8) | b[o + 1];
+
+function parsePNG(b: Uint8Array): RealAnalysis {
+  const width = u32be(b, 16), height = u32be(b, 20), colorType = b[25];
+  let dpi: number | undefined;
+  for (let i = 8; i < b.length - 12;) {
+    const len = u32be(b, i);
+    const type = String.fromCharCode(b[i + 4], b[i + 5], b[i + 6], b[i + 7]);
+    if (type === "pHYs") { const ppuX = u32be(b, i + 8); if (b[i + 16] === 1) dpi = Math.round(ppuX * 0.0254); break; }
+    if (type === "IDAT") break;
+    i += 12 + len;
+    if (len < 0) break;
+  }
+  return { format: "PNG", parsed: true, is_vector: false, width_px: width, height_px: height, embedded_dpi: dpi, color_space: (colorType === 0 || colorType === 4) ? "Grayscale" : "RGB" };
+}
+
+function parseJPEG(b: Uint8Array): RealAnalysis {
+  let w: number | undefined, h: number | undefined, comps: number | undefined, dpi: number | undefined;
+  let i = 2;
+  while (i < b.length - 1) {
+    if (b[i] !== 0xFF) { i++; continue; }
+    const marker = b[i + 1];
+    if (marker === 0xD8 || marker === 0xD9 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+    const len = u16be(b, i + 2);
+    if (marker === 0xE0 && b[i + 4] === 0x4A && b[i + 5] === 0x46) { // APP0 JFIF
+      const units = b[i + 11], xd = u16be(b, i + 12);
+      if (units === 1) dpi = xd; else if (units === 2) dpi = Math.round(xd * 2.54);
+    }
+    if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) { // SOF
+      h = u16be(b, i + 5); w = u16be(b, i + 7); comps = b[i + 9];
+    }
+    if (marker === 0xDA) break; // SOS
+    i += 2 + len;
+  }
+  return { format: "JPEG", parsed: !!w, is_vector: false, width_px: w, height_px: h, embedded_dpi: dpi, color_space: comps === 4 ? "CMYK" : comps === 1 ? "Grayscale" : "RGB" };
+}
+
+function parseTIFF(b: Uint8Array): RealAnalysis {
+  const le = b[0] === 0x49;
+  const r16 = (o: number) => le ? (b[o] | (b[o + 1] << 8)) : ((b[o] << 8) | b[o + 1]);
+  const r32 = (o: number) => (le ? (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) : ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3])) >>> 0;
+  const ifd = r32(4), n = r16(ifd);
+  let w: number | undefined, h: number | undefined, photo: number | undefined, xres: number | undefined, resunit = 2;
+  for (let e = 0; e < n && ifd + 2 + e * 12 + 12 < b.length; e++) {
+    const o = ifd + 2 + e * 12, tag = r16(o), val = r32(o + 8);
+    if (tag === 256) w = val; else if (tag === 257) h = val; else if (tag === 262) photo = val;
+    else if (tag === 296) resunit = val; else if (tag === 282 && val + 8 < b.length) { const num = r32(val), den = r32(val + 4) || 1; xres = num / den; }
+  }
+  const dpi = xres ? (resunit === 3 ? Math.round(xres * 2.54) : Math.round(xres)) : undefined;
+  return { format: "TIFF", parsed: !!w, is_vector: false, width_px: w, height_px: h, embedded_dpi: dpi, color_space: photo === 5 ? "CMYK" : (photo === 2 || photo === 6) ? "RGB" : (photo === 0 || photo === 1) ? "Grayscale" : "unknown" };
+}
+
+function parsePDF(b: Uint8Array): RealAnalysis {
+  const txt = new TextDecoder("latin1").decode(b.subarray(0, Math.min(b.length, 300000)));
+  const m = txt.match(/\/MediaBox\s*\[\s*([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s*\]/);
+  let pw: number | undefined, ph: number | undefined;
+  if (m) { pw = (parseFloat(m[3]) - parseFloat(m[1])) / 72; ph = (parseFloat(m[4]) - parseFloat(m[2])) / 72; }
+  return { format: "PDF", parsed: true, is_vector: true, page_w_in: pw, page_h_in: ph, color_space: "unknown" };
+}
+
+async function analyzeRealFile(fileUrl: string): Promise<RealAnalysis | null> {
+  try {
+    let resp = await fetch(fileUrl, { headers: { Range: "bytes=0-3145727" } }); // first 3MB is plenty for headers
+    if (!resp.ok && resp.status !== 206) resp = await fetch(fileUrl);
+    if (!resp.ok && resp.status !== 206) return null;
+    const b = new Uint8Array(await resp.arrayBuffer());
+    if (b.length < 16) return null;
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return parsePNG(b);
+    if (b[0] === 0xFF && b[1] === 0xD8) return parseJPEG(b);
+    if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 0x2A) || (b[0] === 0x4D && b[1] === 0x4D && b[3] === 0x2A)) return parseTIFF(b);
+    if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return parsePDF(b);
+    if (b[0] === 0x25 && b[1] === 0x21) return { format: "EPS", parsed: true, is_vector: true, color_space: "unknown" }; // %! PostScript
+    return null;
+  } catch (e) { console.error("[CheckArtwork] real analysis failed:", e); return null; }
+}
+
+// Turn the REAL parse + intended wrap size into a score + concrete findings.
+function realFindings(ra: RealAnalysis, sqft: number | null): { score: number; issues: string[]; recommendations: string[]; good: string[] } {
+  const issues: string[] = [], recommendations: string[] = [], good: string[] = [];
+  let score = 6;
+  if (ra.is_vector) { score += 3; good.push(`${ra.format} vector file — scales cleanly to any wrap size.`); recommendations.push("Confirm all fonts are outlined (converted to curves)."); }
+  if (ra.width_px && ra.height_px) {
+    good.push(`Actual dimensions: ${ra.width_px}×${ra.height_px}px${ra.embedded_dpi ? ` @ ${ra.embedded_dpi} DPI` : ""}.`);
+    if (sqft && sqft > 0) {
+      const dpi = Math.round(Math.sqrt((ra.width_px * ra.height_px) / (sqft * 144)));
+      if (dpi >= 100) { score += 2; good.push(`≈${dpi} DPI across a ${sqft} sqft wrap — excellent for printing.`); }
+      else if (dpi >= 72) { score += 1; good.push(`≈${dpi} DPI across a ${sqft} sqft wrap — good (wraps view at a distance).`); }
+      else if (dpi >= 40) { score -= 1; issues.push(`Only ≈${dpi} DPI across a ${sqft} sqft wrap — a little soft up close. A Print-Ready Prep upscale fixes this.`); }
+      else { score -= 3; issues.push(`Only ≈${dpi} DPI across a ${sqft} sqft wrap — too low, it will pixelate. Needs a Print-Ready Prep upscale.`); }
+    }
+  }
+  if (ra.color_space === "CMYK") good.push("CMYK color space ✓ — print-ready color.");
+  else if (ra.color_space === "RGB") { issues.push("Color space is RGB — we print in CMYK, so some colors can shift. We convert + proof before printing."); recommendations.push("Convert to CMYK for accurate wrap color."); }
+  else if (ra.color_space === "Grayscale") issues.push("Grayscale color space — confirm that's intentional.");
+  if (!ra.is_vector) recommendations.push("High-res raster prints great; vector (PDF/AI/EPS) is ideal if you have it.");
+  recommendations.push('Include a 0.25" bleed on all edges.');
+  return { score: Math.max(1, Math.min(10, score)), issues, recommendations, good };
+}
+
 // WrapGuruAI print-readiness analysis. Metadata alone can't confirm color space,
 // DPI, or font outlining, so we advise on them (matching the original WrapGuruAI
 // customer email) and add format-specific guidance.
@@ -252,10 +367,25 @@ serve(async (req) => {
       );
     }
 
-    // Perform AI pre-check (file analysis based on metadata)
+    // Perform AI pre-check. Start with the metadata heuristic, then upgrade with
+    // a REAL parse of the file bytes (true dimensions, DPI, color space, vector).
     const assessment = assessFileQuality(file_name, file_type || '', file_size || 0);
     const ext = (file_name.toLowerCase().split('.').pop() || '');
-    const analysis = buildPrintReadyAnalysis(ext, assessment);
+    let analysis = buildPrintReadyAnalysis(ext, assessment);
+
+    const real = await analyzeRealFile(file_url);
+    if (real?.parsed) {
+      const sqft = vehicle_info?.sqft ? Number(vehicle_info.sqft) : null;
+      const rf = realFindings(real, sqft);
+      assessment.score = rf.score;                 // real score overrides the guess
+      assessment.fileTypeLabel = real.format;
+      analysis = { issues: rf.issues, recommendations: rf.recommendations, verdict:
+        rf.score >= 7 ? "Looks print-ready — nice file." : rf.score >= 4 ? "Almost there — address the flagged items and we'll confirm." : "Not print-ready yet — let's fix the flagged items (our Print-Ready Prep upscale handles low resolution).",
+        printReady: rf.score >= 7, real, good: rf.good };
+      console.log('[CheckArtwork] REAL analysis:', JSON.stringify(real), 'score', rf.score);
+    } else {
+      console.log('[CheckArtwork] Real parse unavailable, used metadata heuristic.');
+    }
 
     console.log('[CheckArtwork] Assessment:', assessment, 'Analysis:', analysis);
 
@@ -286,7 +416,10 @@ serve(async (req) => {
             verdict: analysis.verdict,
             file_type_ok: assessment.fileTypeOk,
             file_type_label: assessment.fileTypeLabel,
-            size_assessment: assessment.sizeAssessment
+            size_assessment: assessment.sizeAssessment,
+            // REAL parse results (null if the file couldn't be read)
+            real_analysis: (analysis as any).real || null,
+            positives: (analysis as any).good || []
           },
           customer_email_sent: false,
           response_options: ['design_fee', 'wrap_quote'],
@@ -304,11 +437,11 @@ serve(async (req) => {
     }
 
     // Send email notification to design team
-    if (resendApiKey) {
+    if (resendApiKey && !body.debug) {
       try {
         const resend = new Resend(resendApiKey);
-        
-        const vehicleStr = vehicle_info 
+
+        const vehicleStr = vehicle_info
           ? `${vehicle_info.year || ''} ${vehicle_info.make || ''} ${vehicle_info.model || ''}`.trim()
           : 'Not provided';
         const sqftStr = vehicle_info?.sqft ? `${vehicle_info.sqft} sq ft` : '';
@@ -394,7 +527,7 @@ serve(async (req) => {
     // Send the WrapGuruAI score email to the CUSTOMER (the original "your file got
     // the AI treatment! Score: X/10" experience). Only when we have their email.
     let customerEmailSent = false;
-    if (resendApiKey && customer_email && !String(customer_email).includes('@capture.local')) {
+    if (resendApiKey && !body.debug && customer_email && !String(customer_email).includes('@capture.local')) {
       try {
         const resend = new Resend(resendApiKey);
         const firstName = (customer_name || '').split(' ')[0] || '';
