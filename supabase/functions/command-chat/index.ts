@@ -172,9 +172,9 @@ quantity = sqft for per-sqft products, yards for by-the-yard, units for flat ite
   },
   {
     name: "cmd_fix",
-    description: `Offer/create a PAID file fix through ShopFlow. Use AFTER a "Check my file" run flags an issue and the customer wants us to fix it (upscale/low-res, cut path, recreate a design, or a production pack). Returns a Stripe pay link (or cart link) and an example image. Pull this lever instead of just telling them to email us.
-fix_key options: print_prep (low-res/upscale, $199), cut_path ($199), production_pack ($199), recreate (AI design from a reference, $975). Omit fix_key to let ShopFlow recommend from the detected issues.`,
-    input_schema: { type: "object", properties: { fix_key: { type: "string", description: "print_prep | cut_path | production_pack | recreate. Optional." } }, required: [] }
+    description: `Offer/create a PAID file fix through ShopFlow. Use AFTER a "Check my file" run flags an issue and the customer wants us to fix it. Returns a secure Stripe checkout link. Pull this lever instead of just telling them to email us.
+fix_key options: upscale (low-res/DPI, automatic 4× upscale, $49), cutpath ($199), recreate (AI design from a reference, $199), production_pack ($299). Omit fix_key to let ShopFlow pick from the detected issues.`,
+    input_schema: { type: "object", properties: { fix_key: { type: "string", description: "upscale | cutpath | recreate | production_pack. Optional." } }, required: [] }
   },
   {
     name: "cmd_order",
@@ -394,53 +394,71 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return result;
   }
 
-  // cmd_fix — pay-then-process file fix via wrapguru-shopflow. Finds the
-  // customer's most recent "Check my file" result for this session to get the
-  // file, then creates a Stripe (or Woo) pay link for the chosen fix.
+  // cmd_fix — pay-then-process file fix via RestylePro's shopflow-bridge.
+  // Finds the customer's most recent "Check my file" result for this session,
+  // creates a job on the bridge (which owns Stripe + processing), and hands
+  // back the checkout link. Delivery of the finished file happens via the
+  // bridge's callback to wrapguru-shopflow?action=callback.
   if (name === 'cmd_fix') {
+    const SHOPFLOW_BRIDGE = 'https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge';
+    const SERVICE_LABEL: Record<string, string> = {
+      upscale: 'Print-Ready Upscale (4×)', cutpath: 'Cut-Path / Contour Setup',
+      recreate: 'AI Design Recreate', production_pack: 'Production Pack',
+    };
     const sid = context?.session_id;
-    if (!sid) return { error: 'no_session', message: 'Ask them to run "Check my file" first so I have their file.' };
-    // Latest artwork_review for this chat session.
+    if (!sid) return { needs_file: true, message: 'Ask them to run "Check my file" first so I have their file.' };
     const rows = await dbQuery(baseUrl, key, 'ai_actions',
       `action_type=eq.artwork_review&action_payload->>session_id=eq.${encodeURIComponent(sid)}&select=action_payload&order=created_at.desc&limit=1`);
     const art = Array.isArray(rows) && rows[0]?.action_payload ? rows[0].action_payload : null;
     if (!art?.file_url) return { needs_file: true, message: 'I don\'t have a file on record yet — run "Check my file" and I\'ll set up the fix.' };
+    const email = art.customer_email || context?.email || null;
+    if (!email) return { needs_email: true, message: 'I need the customer\'s email before setting up the fix — ask for it, then try again.' };
 
-    const issues = art?.ai_precheck?.quick_issues || [];
+    // Map the chosen fix / detected issues -> bridge service name.
+    const issuesText = (art?.ai_precheck?.quick_issues || []).join(' ').toLowerCase();
     const score = art?.ai_precheck?.preliminary_score ?? null;
-    let fixKey = input.fix_key ? String(input.fix_key) : '';
-    if (!fixKey) {
-      const q = await fetch(`${baseUrl}/functions/v1/wrapguru-shopflow`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-        body: JSON.stringify({ action: 'quote', issues, score }),
-      });
-      const qj = await q.json().catch(() => ({}));
-      fixKey = qj?.fixes?.[0]?.key || 'print_prep';
+    let service = String(input.fix_key || '').toLowerCase();
+    // accept legacy keys / free text
+    if (service === 'print_prep') service = 'upscale';
+    if (service === 'cut_path') service = 'cutpath';
+    if (!['upscale', 'cutpath', 'recreate', 'production_pack'].includes(service)) {
+      if (/cut|contour|outline/.test(issuesText)) service = 'cutpath';
+      else if (/recreate|redesign|from.*reference/.test(issuesText)) service = 'recreate';
+      else service = 'upscale'; // low-res/dpi/raster/rgb or generic -> automatic upscale
     }
 
-    const r = await fetch(`${baseUrl}/functions/v1/wrapguru-shopflow`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+    const vehicleStr = art.vehicle_info
+      ? `${art.vehicle_info.year || ''} ${art.vehicle_info.make || ''} ${art.vehicle_info.model || ''}`.trim()
+      : '';
+
+    const r = await fetch(SHOPFLOW_BRIDGE, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'checkout',
-        fix_key: fixKey,
-        file_url: art.file_url,
-        file_name: art.file_name,
-        customer_email: art.customer_email || context?.email || null,
-        customer_name: art.customer_name || null,
-        vehicle: art.vehicle_info || null,
-        session_id: sid,
+        action: 'create', service,
+        file_url: art.file_url, email,
+        vehicle: vehicleStr || undefined,
+        notes: `WrapGuru chat • score ${score ?? '?'}/10 • ${art.file_name || ''}`,
+        callback_url: `${baseUrl}/functions/v1/wrapguru-shopflow?action=callback`,
+        return_url: 'https://weprintwraps.com/?shopflow=success',
       }),
     });
     const rj = await r.json().catch(() => ({}));
-    if (rj.error) return { success: false, error: rj.error };
+    if (!rj.ok || !rj.checkout_url) return { success: false, error: rj.error || 'shopflow_create_failed', message: 'I couldn\'t set up that fix just now — I\'ll have our team follow up by email.' };
+
+    // Store the delivery mapping so the bridge callback can email the customer.
+    await dbInsert(baseUrl, key, 'ai_actions', {
+      action_type: 'shopflow_job', organization_id: ORG_ID, priority: 'high', resolved: false,
+      action_payload: {
+        job_id: rj.job_id, service, price: rj.price, status: 'pending_payment',
+        customer_email: email, customer_name: art.customer_name || null,
+        file_name: art.file_name || null, file_url: art.file_url, session_id: sid,
+      },
+    });
+
+    const label = SERVICE_LABEL[service] || 'file fix';
     return {
-      success: true,
-      fix: fixKey,
-      label: rj.label,
-      price: rj.price,
-      pay_url: rj.checkout_url || rj.cart_url,
-      example_url: undefined,
-      message: `${rj.label} is $${rj.price}. Here's the secure pay link — once it's paid we process it automatically and email you the finished file: ${rj.checkout_url || rj.cart_url}`,
+      success: true, service, label, price: rj.price, job_id: rj.job_id, pay_url: rj.checkout_url,
+      message: `${label} is $${rj.price}. Here's your secure checkout — once it's paid we process it${service === 'upscale' ? ' automatically' : ''} and email you the finished file:\n${rj.checkout_url}`,
     };
   }
 
@@ -746,9 +764,9 @@ DESIGN HELP ("I need a design"):
 
 FILE FIXES (ShopFlow — you can actually fix their file, not just advise):
 - After a "Check my file" run flags a problem (low score, low-res/upscale needed, needs a cut path, or they want a design recreated), DON'T just tell them to email us. Offer to fix it and pull the lever with cmd_fix.
-- cmd_fix returns a secure pay link + price. Give them the link plainly and say: once it's paid we process it automatically and email them the finished file.
-- Fixes: print_prep/upscale ($199), cut_path ($199), production_pack ($199), recreate a design ($975). If unsure which, call cmd_fix with no fix_key and we'll recommend based on what the file check found.
-- Only offer a fix when there's a file on record from a check; otherwise ask them to run "Check my file" first.
+- cmd_fix returns a secure checkout link + price. Give them the link plainly. For an upscale it's processed AUTOMATICALLY after payment; the others our team finishes fast. Either way we email them the finished file.
+- Services: upscale ($49, automatic 4× print-ready upscale), cutpath ($199), recreate a design ($199), production_pack ($299). If unsure which, call cmd_fix with no fix_key and we'll pick based on what the file check found (low-res/DPI → upscale).
+- We need their email and a file on record from a "Check my file" run before setting up a fix. If either is missing, get it first.
 
 CONTACT COLLECTION:
 - EMAIL is the only thing required to send a quote — get it, then immediately call cmd_quote. Never hold the emailed quote hostage for a name or phone number.
