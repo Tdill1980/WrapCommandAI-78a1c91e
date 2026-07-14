@@ -220,6 +220,36 @@ function realFindings(ra: RealAnalysis, sqft: number | null): { score: number; i
   return { score: Math.max(1, Math.min(10, score)), issues, recommendations, good };
 }
 
+// A structured checklist with the ACTUAL values, so the wizard/email can show
+// each check (resolution, DPI, color space, format, size) with a pass/warn/fail.
+type CheckStatus = "pass" | "warn" | "fail" | "info";
+function buildChecks(real: RealAnalysis | null, ext: string, fileSize: number, sqft: number | null): Array<{ label: string; value: string; status: CheckStatus }> {
+  const checks: Array<{ label: string; value: string; status: CheckStatus }> = [];
+  const isVector = real?.is_vector ?? ["pdf", "ai", "eps", "svg"].includes(ext);
+  const fmt = real?.format || (ext ? ext.toUpperCase() : "Unknown");
+  checks.push({ label: "File format", value: `${fmt}${isVector ? " · vector" : real ? " · raster" : ""}`, status: isVector ? "pass" : "info" });
+
+  if (real?.width_px && real?.height_px) {
+    checks.push({ label: "Resolution", value: `${real.width_px} × ${real.height_px} px`, status: "info" });
+    if (sqft && sqft > 0) {
+      const dpi = Math.round(Math.sqrt((real.width_px * real.height_px) / (sqft * 144)));
+      checks.push({ label: `Effective DPI @ ${sqft} sq ft`, value: `≈ ${dpi} DPI`, status: dpi >= 72 ? "pass" : dpi >= 40 ? "warn" : "fail" });
+    } else if (real.embedded_dpi) {
+      checks.push({ label: "Embedded DPI", value: `${real.embedded_dpi} DPI`, status: real.embedded_dpi >= 100 ? "pass" : "warn" });
+    }
+  } else if (isVector) {
+    checks.push({ label: "Resolution", value: real?.page_w_in && real?.page_h_in ? `${real.page_w_in.toFixed(1)}" × ${real.page_h_in.toFixed(1)}" · scales` : "Vector — scales to any size", status: "pass" });
+  } else {
+    checks.push({ label: "Resolution", value: "Could not read from file", status: "info" });
+  }
+
+  if (real?.color_space) {
+    checks.push({ label: "Color space", value: real.color_space, status: real.color_space === "CMYK" ? "pass" : real.color_space === "unknown" ? "info" : "warn" });
+  }
+  checks.push({ label: "File size", value: formatFileSize(fileSize || 0), status: "info" });
+  return checks;
+}
+
 // WrapGuruAI print-readiness analysis. Metadata alone can't confirm color space,
 // DPI, or font outlining, so we advise on them (matching the original WrapGuruAI
 // customer email) and add format-specific guidance.
@@ -268,8 +298,18 @@ function buildCustomerScoreEmailHTML(opts: {
   recommendations: string[];
   verdict: string;
   printReady: boolean;
+  checks?: Array<{ label: string; value: string; status: string }>;
 }): string {
   const scoreColor = opts.score >= 7 ? '#22c55e' : opts.score >= 4 ? '#f59e0b' : '#ef4444';
+  const dot = (s: string) => s === 'pass' ? '🟢' : s === 'warn' ? '🟡' : s === 'fail' ? '🔴' : '⚪';
+  const checksHtml = (opts.checks && opts.checks.length)
+    ? `<div style="padding:8px 24px;"><h3 style="font-size:16px;color:#f3f2fb;margin:16px 0 10px;">🔍 What we checked</h3>
+       <table style="width:100%;border-collapse:collapse;font-size:14px;">${opts.checks.map(c => `
+         <tr>
+           <td style="padding:9px 0;color:#b9b6cf;border-bottom:1px solid #221d38;white-space:nowrap;">${dot(c.status)} ${c.label}</td>
+           <td style="padding:9px 0;color:#f3f2fb;border-bottom:1px solid #221d38;text-align:right;font-weight:600;">${c.value}</td>
+         </tr>`).join('')}</table></div>`
+    : '';
   const issuesHtml = opts.issues.length
     ? opts.issues.map(i => `<div style="background:#2a1f1f;border-left:3px solid #ef4444;border-radius:8px;padding:14px 16px;margin:0 0 10px;color:#f3f2fb;font-size:14px;line-height:1.5;">🔸 ${i}</div>`).join('')
     : `<div style="color:#22c55e;">✓ No immediate issues detected</div>`;
@@ -294,6 +334,7 @@ function buildCustomerScoreEmailHTML(opts: {
       <div>${readyBadge}</div>
       <div style="font-size:13px;color:#8b88a3;margin-top:14px;">${opts.fileName} • ${opts.fileTypeLabel} • ${opts.fileSizeFormatted}</div>
     </div>
+    ${checksHtml}
     <div style="padding:0 24px 8px;">
       <h3 style="font-size:16px;color:#f3f2fb;margin:16px 0 12px;">⚠️ Issues Found</h3>
       ${issuesHtml}
@@ -387,7 +428,10 @@ serve(async (req) => {
       console.log('[CheckArtwork] Real parse unavailable, used metadata heuristic.');
     }
 
-    console.log('[CheckArtwork] Assessment:', assessment, 'Analysis:', analysis);
+    const sqftForChecks = vehicle_info?.sqft ? Number(vehicle_info.sqft) : null;
+    const checks = buildChecks(real, ext, file_size || 0, sqftForChecks);
+
+    console.log('[CheckArtwork] Assessment:', assessment, 'Analysis:', analysis, 'Checks:', checks);
 
     // Create ai_actions record for Ops Desk
     const { data: actionRecord, error: actionError } = await supabase
@@ -419,7 +463,8 @@ serve(async (req) => {
             size_assessment: assessment.sizeAssessment,
             // REAL parse results (null if the file couldn't be read)
             real_analysis: (analysis as any).real || null,
-            positives: (analysis as any).good || []
+            positives: (analysis as any).good || [],
+            checks
           },
           customer_email_sent: false,
           response_options: ['design_fee', 'wrap_quote'],
@@ -541,6 +586,7 @@ serve(async (req) => {
           recommendations: analysis.recommendations,
           verdict: analysis.verdict,
           printReady: analysis.printReady,
+          checks,
         });
         await resend.emails.send({
           from: 'WrapGuruAI <hello@weprintwraps.com>',
@@ -581,6 +627,9 @@ serve(async (req) => {
           file_type_status: fileTypeStatus,
           quick_issues: analysis.issues,
           recommendations: analysis.recommendations,
+          positives: (analysis as any).good || [],
+          checks,
+          real_analysis: (analysis as any).real || null,
           size_assessment: assessment.sizeAssessment,
           file_size_formatted: formatFileSize(file_size || 0)
         },
