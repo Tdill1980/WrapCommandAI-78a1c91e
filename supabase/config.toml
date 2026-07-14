@@ -31,6 +31,10 @@ verify_jwt = false
 [functions.wrapguru-shopflow]
 verify_jwt = false
 
+# Internal team tool; gated by TEAM_OUTPUT_KEY inside the function.
+[functions.deliver-design-output]
+verify_jwt = false
+
 [functions.approveflow-event]
 verify_jwt = false
 

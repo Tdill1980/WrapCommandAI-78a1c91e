@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WrapGuru — Deliver Design Output</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:#0d0b1a;color:#f3f2fb;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .card{width:100%;max-width:520px;background:#141225;border:1px solid #2a2540;border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.4);}
+  .hd{padding:20px 24px;background:linear-gradient(135deg,#e6007e,#7c3aed);}
+  .hd h1{font-size:19px;}.hd p{font-size:13px;opacity:.9;margin-top:3px;}
+  .bd{padding:22px 24px;}
+  label{display:block;font-size:12.5px;color:#b9b6cf;margin:14px 0 6px;font-weight:600;}
+  input,textarea{width:100%;background:#0f0d1c;border:1px solid #302a4d;border-radius:9px;color:#f3f2fb;padding:11px 13px;font-size:14px;outline:none;}
+  input:focus,textarea:focus{border-color:#7c3aed;}
+  .row{display:flex;gap:12px;}.row>div{flex:1;}
+  button{width:100%;margin-top:20px;background:linear-gradient(135deg,#e6007e,#7c3aed);border:none;color:#fff;font-weight:800;padding:13px;border-radius:10px;cursor:pointer;font-size:15px;}
+  button:disabled{opacity:.6;cursor:default;}
+  .msg{margin-top:16px;padding:12px 14px;border-radius:9px;font-size:13.5px;display:none;}
+  .ok{background:#0f2a1a;border:1px solid #22c55e;color:#86efac;}
+  .err{background:#2a1414;border:1px solid #ef4444;color:#fca5a5;}
+  .hint{font-size:11.5px;color:#7a7790;margin-top:4px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="hd"><h1>🎨 Deliver Design Output</h1><p>Upload the finished print-ready file → customer gets it + it's saved to the system</p></div>
+    <div class="bd">
+      <label>Order # <span class="hint">(from WooCommerce)</span></label>
+      <input id="order" type="text" placeholder="e.g. 72487">
+      <div class="row">
+        <div><label>Customer email *</label><input id="email" type="email" placeholder="customer@email.com"></div>
+        <div><label>Customer name</label><input id="name" type="text" placeholder="First Last"></div>
+      </div>
+      <label>Vehicle</label>
+      <input id="vehicle" type="text" placeholder="2017 F450 Dually">
+      <label>Finished print-ready file *</label>
+      <input id="file" type="file" accept=".pdf,.ai,.eps,.png,.jpg,.jpeg,.tif,.tiff,.psd,.zip,.svg">
+      <div class="hint">This is the output you built — it's delivered to the customer AND stored to build our file library.</div>
+      <label>Notes (internal)</label>
+      <textarea id="notes" rows="2" placeholder="Anything worth logging"></textarea>
+      <button id="go">Deliver to customer</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+<script>
+(function(){
+  var SB='https://qxllysilzonrlyoaomce.supabase.co';
+  var FN=SB+'/functions/v1/deliver-design-output';
+  var ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4bGx5c2lsem9ucmx5b2FvbWNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyMzQxMjIsImV4cCI6MjA4MzgxMDEyMn0.s1IyOY7QAVyrTtG_XLhugJUvxi2X_nHCvqvchYCvwtM';
+  var $=function(id){return document.getElementById(id);};
+  var go=$('go'), msg=$('msg');
+  // one-time team key
+  var teamKey=localStorage.getItem('wg_team_key');
+  if(!teamKey){teamKey=prompt('Team key (leave blank if none set):')||'';localStorage.setItem('wg_team_key',teamKey);}
+  function show(t,ok){msg.textContent=t;msg.className='msg '+(ok?'ok':'err');msg.style.display='block';}
+  go.onclick=function(){
+    var email=($('email').value||'').trim(), file=$('file').files[0], order=($('order').value||'').trim();
+    if(!email||email.indexOf('@')<0){show('Enter the customer email.',false);return;}
+    if(!file){show('Choose the finished file.',false);return;}
+    go.disabled=true;go.textContent='Uploading…';msg.style.display='none';
+    var path='design-output/'+(order||'no-order')+'/'+Date.now()+'-'+file.name.replace(/[^\w.\-]/g,'_');
+    fetch(SB+'/storage/v1/object/media-library/'+path,{method:'POST',headers:{'Authorization':'Bearer '+ANON,'apikey':ANON,'Content-Type':file.type||'application/octet-stream','x-upsert':'true'},body:file})
+    .then(function(r){if(!r.ok)throw new Error('upload failed');return SB+'/storage/v1/object/public/media-library/'+path;})
+    .then(function(fileUrl){go.textContent='Delivering…';
+      return fetch(FN,{method:'POST',headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
+        body:JSON.stringify({team_key:teamKey,order_id:order,customer_email:email,customer_name:$('name').value.trim(),vehicle:$('vehicle').value.trim(),file_url:fileUrl,file_name:file.name,notes:$('notes').value.trim()})});
+    })
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j.success){show('✅ Delivered! '+(j.emailed?'Customer emailed. ':'')+(j.woo_updated?'Order updated. ':'')+'Saved to library.',true);
+        ['order','email','name','vehicle','notes'].forEach(function(id){$(id).value='';});$('file').value='';}
+      else show('Error: '+(j.error||'delivery failed'),false);
+    })
+    .catch(function(e){show('Failed: '+e.message,false);})
+    .then(function(){go.disabled=false;go.textContent='Deliver to customer';});
+  };
+})();
+</script>
+</body>
+</html>
