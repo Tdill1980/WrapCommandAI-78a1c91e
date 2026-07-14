@@ -105,6 +105,97 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// WrapGuruAI print-readiness analysis. Metadata alone can't confirm color space,
+// DPI, or font outlining, so we advise on them (matching the original WrapGuruAI
+// customer email) and add format-specific guidance.
+function buildPrintReadyAnalysis(ext: string, assessment: { score: number; quickIssues: string[] }) {
+  const isRaster = ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'psd'].includes(ext);
+  const isVector = ['pdf', 'ai', 'eps'].includes(ext);
+
+  const issues: string[] = [...assessment.quickIssues];
+  const recommendations: string[] = [];
+
+  if (isRaster) {
+    issues.push('File appears to use RGB color space — CMYK is recommended for optimal vehicle wrap color accuracy');
+    issues.push('Cannot determine resolution from the upload — verify DPI is adequate (100+ DPI at full size) for vehicle wrap printing');
+    issues.push('Raster image format — vector formats (PDF, AI, EPS) provide better scalability for vehicle wraps');
+    recommendations.push('Convert artwork to CMYK before final output');
+    recommendations.push('Confirm the file is built at final size at 100+ DPI (or supply vector art)');
+  }
+  if (isVector) {
+    recommendations.push('Verify all colors are set to CMYK');
+    recommendations.push('Great choice on vector — it scales cleanly to full wrap size');
+  }
+  // Applies to every file — we can't see font state from metadata.
+  issues.push('Cannot determine font status — verify all text is outlined / converted to curves for production');
+  recommendations.push('Outline all fonts (convert text to curves)');
+  recommendations.push('Include a 0.25" bleed on all edges');
+
+  const printReady = assessment.score >= 7;
+  const verdict = assessment.score >= 7
+    ? 'Looks solid — likely print-ready once you confirm the items above.'
+    : assessment.score >= 4
+      ? 'Almost there — address the flagged items and we\'ll confirm print-readiness.'
+      : 'Not print-ready yet — let\'s fix the flagged items. Our design team can help.';
+
+  return { issues, recommendations, verdict, printReady };
+}
+
+// WrapGuruAI® customer-facing score email (restores the original "your file got
+// the AI treatment! Score: X/10" experience).
+function buildCustomerScoreEmailHTML(opts: {
+  firstName: string;
+  score: number;
+  fileName: string;
+  fileTypeLabel: string;
+  fileSizeFormatted: string;
+  issues: string[];
+  recommendations: string[];
+  verdict: string;
+  printReady: boolean;
+}): string {
+  const scoreColor = opts.score >= 7 ? '#22c55e' : opts.score >= 4 ? '#f59e0b' : '#ef4444';
+  const issuesHtml = opts.issues.length
+    ? opts.issues.map(i => `<div style="background:#2a1f1f;border-left:3px solid #ef4444;border-radius:8px;padding:14px 16px;margin:0 0 10px;color:#f3f2fb;font-size:14px;line-height:1.5;">🔸 ${i}</div>`).join('')
+    : `<div style="color:#22c55e;">✓ No immediate issues detected</div>`;
+  const recsHtml = opts.recommendations.length
+    ? `<ul style="margin:8px 0 0;padding-left:20px;color:#cbd5e1;font-size:14px;line-height:1.7;">${opts.recommendations.map(r => `<li>${r}</li>`).join('')}</ul>`
+    : '';
+  const readyBadge = opts.printReady
+    ? '<span style="background:#22c55e;color:#052e16;font-weight:700;padding:4px 12px;border-radius:999px;font-size:12px;">LIKELY PRINT-READY</span>'
+    : '<span style="background:#f59e0b;color:#3a2a05;font-weight:700;padding:4px 12px;border-radius:999px;font-size:12px;">NEEDS A QUICK REVIEW</span>';
+
+  return `
+<div style="margin:0;padding:0;background:#0d0b1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#0d0b1a;color:#f3f2fb;">
+    <div style="text-align:center;padding:36px 24px 12px;">
+      <div style="font-size:40px;">🤖</div>
+      <div style="font-size:26px;font-weight:800;margin-top:8px;">WrapGuruAI®</div>
+      <div style="font-size:20px;font-weight:700;color:#d9c8ff;">Analysis Complete</div>
+    </div>
+    <div style="text-align:center;padding:8px 24px 24px;">
+      <div style="font-size:15px;color:#b9b6cf;">Hey ${opts.firstName || 'there'}, your file got the AI treatment!</div>
+      <div style="font-size:52px;font-weight:800;color:${scoreColor};margin:8px 0 4px;">${opts.score}/10</div>
+      <div>${readyBadge}</div>
+      <div style="font-size:13px;color:#8b88a3;margin-top:14px;">${opts.fileName} • ${opts.fileTypeLabel} • ${opts.fileSizeFormatted}</div>
+    </div>
+    <div style="padding:0 24px 8px;">
+      <h3 style="font-size:16px;color:#f3f2fb;margin:16px 0 12px;">⚠️ Issues Found</h3>
+      ${issuesHtml}
+    </div>
+    ${recsHtml ? `<div style="padding:8px 24px 8px;"><h3 style="font-size:16px;color:#f3f2fb;margin:16px 0 6px;">✅ Recommendations</h3>${recsHtml}</div>` : ''}
+    <div style="padding:16px 24px 8px;">
+      <div style="background:#161327;border:1px solid #2a2540;border-radius:12px;padding:16px;color:#e6e3f5;font-size:14px;line-height:1.6;">${opts.verdict}</div>
+    </div>
+    <div style="text-align:center;padding:20px 24px 32px;">
+      <a href="https://weprintwraps.com/quote" style="display:inline-block;background:#e6007e;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">Get My Wrap Quote</a>
+      <div style="font-size:12px;color:#7a7790;margin-top:16px;">Our design team will follow up personally. Questions? Reply to this email.</div>
+      <div style="font-size:12px;color:#7a7790;margin-top:6px;">⚡ Powered by WrapCommandAI</div>
+    </div>
+  </div>
+</div>`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -163,8 +254,10 @@ serve(async (req) => {
 
     // Perform AI pre-check (file analysis based on metadata)
     const assessment = assessFileQuality(file_name, file_type || '', file_size || 0);
-    
-    console.log('[CheckArtwork] Assessment:', assessment);
+    const ext = (file_name.toLowerCase().split('.').pop() || '');
+    const analysis = buildPrintReadyAnalysis(ext, assessment);
+
+    console.log('[CheckArtwork] Assessment:', assessment, 'Analysis:', analysis);
 
     // Create ai_actions record for Ops Desk
     const { data: actionRecord, error: actionError } = await supabase
@@ -187,11 +280,15 @@ serve(async (req) => {
           submitted_at: new Date().toISOString(),
           ai_precheck: {
             preliminary_score: assessment.score,
-            quick_issues: assessment.quickIssues,
+            quick_issues: analysis.issues,
+            recommendations: analysis.recommendations,
+            print_ready: analysis.printReady,
+            verdict: analysis.verdict,
             file_type_ok: assessment.fileTypeOk,
             file_type_label: assessment.fileTypeLabel,
             size_assessment: assessment.sizeAssessment
           },
+          customer_email_sent: false,
           response_options: ['design_fee', 'wrap_quote'],
           needs_response: true,
           summary: `Artwork review: ${file_name} (${formatFileSize(file_size || 0)}) - Score: ${assessment.score}/10`
@@ -294,6 +391,43 @@ serve(async (req) => {
       }
     }
 
+    // Send the WrapGuruAI score email to the CUSTOMER (the original "your file got
+    // the AI treatment! Score: X/10" experience). Only when we have their email.
+    let customerEmailSent = false;
+    if (resendApiKey && customer_email && !String(customer_email).includes('@capture.local')) {
+      try {
+        const resend = new Resend(resendApiKey);
+        const firstName = (customer_name || '').split(' ')[0] || '';
+        const customerHtml = buildCustomerScoreEmailHTML({
+          firstName,
+          score: assessment.score,
+          fileName: file_name,
+          fileTypeLabel: assessment.fileTypeLabel,
+          fileSizeFormatted: formatFileSize(file_size || 0),
+          issues: analysis.issues,
+          recommendations: analysis.recommendations,
+          verdict: analysis.verdict,
+          printReady: analysis.printReady,
+        });
+        await resend.emails.send({
+          from: 'WrapGuruAI <hello@weprintwraps.com>',
+          to: [customer_email],
+          subject: `🚀 ${firstName ? firstName + ', ' : ''}your file got the AI treatment! Score: ${assessment.score}/10 ✨`,
+          html: customerHtml,
+        });
+        customerEmailSent = true;
+        console.log('[CheckArtwork] WrapGuruAI score email sent to customer:', customer_email);
+        // Flag it on the ai_action so the admin knows the customer was notified.
+        if (actionRecord?.id) {
+          await supabase.from('ai_actions')
+            .update({ action_payload: { ...actionRecord.action_payload, customer_email_sent: true } })
+            .eq('id', actionRecord.id);
+        }
+      } catch (custErr) {
+        console.error('[CheckArtwork] Customer score email failed:', custErr);
+      }
+    }
+
     // Build response message for Jordan to display
     const scoreEmoji = assessment.score >= 7 ? '✓' : assessment.score >= 4 ? '⚠️' : '❌';
     const fileTypeStatus = assessment.fileTypeOk ? '✓' : '⚠️';
@@ -307,14 +441,18 @@ serve(async (req) => {
         preliminary_check: {
           score: assessment.score,
           score_emoji: scoreEmoji,
+          print_ready: analysis.printReady,
+          verdict: analysis.verdict,
           file_type_ok: assessment.fileTypeOk,
           file_type_label: assessment.fileTypeLabel,
           file_type_status: fileTypeStatus,
-          quick_issues: assessment.quickIssues,
+          quick_issues: analysis.issues,
+          recommendations: analysis.recommendations,
           size_assessment: assessment.sizeAssessment,
           file_size_formatted: formatFileSize(file_size || 0)
         },
-        message: `Got your file! Here's a quick preliminary check:\n\n📊 Quick Analysis:\n• File type: ${assessment.fileTypeLabel} ${fileTypeStatus}\n• File size: ${formatFileSize(file_size || 0)}${assessment.sizeAssessment ? ` (${assessment.sizeAssessment.toLowerCase()})` : ''}\n${assessment.quickIssues.length > 0 ? '\n⚠️ Notes:\n' + assessment.quickIssues.map(i => '• ' + i).join('\n') : ''}\n\n⚠️ This is a PRELIMINARY check only. It does NOT guarantee your file is print-ready.\n\nOur design team will do a full review and email you with:\n• Detailed print-ready analysis\n• Quote for your wrap project\n• Design services options if needed\n\n💡 For instant sq ft pricing on your vehicle, use our quote tool at weprintwraps.com/quote - just select your make & model!`,
+        customer_email_sent: customerEmailSent,
+        message: `Got your file! Here's your WrapGuruAI analysis — Score: ${assessment.score}/10 ${scoreEmoji}\n\n${analysis.verdict}\n\n${analysis.issues.length > 0 ? '⚠️ Issues to check:\n' + analysis.issues.map(i => '• ' + i).join('\n') + '\n\n' : ''}${customerEmailSent ? '📧 I just emailed you the full breakdown.\n\n' : ''}Our design team will also review it personally and follow up. 💡 For instant sq ft pricing, use our quote tool at weprintwraps.com/quote.`,
         next_steps: 'Design team will review and email you with detailed analysis and quote.'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

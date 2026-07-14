@@ -1366,6 +1366,10 @@
             file_type: file.type,
             file_size: file.size,
             customer_confirmed_full_wrap: true,
+            // Pass already-collected contact so WrapGuruAI can email the customer
+            // their score (the "your file got the AI treatment!" email).
+            customer_email: collectedEmail || undefined,
+            customer_name: collectedName || undefined,
             geo_data: geoData
           })
         });
