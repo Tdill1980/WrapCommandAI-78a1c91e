@@ -411,6 +411,16 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
       `action_type=eq.artwork_review&action_payload->>session_id=eq.${encodeURIComponent(sid)}&select=action_payload&order=created_at.desc&limit=1`);
     const art = Array.isArray(rows) && rows[0]?.action_payload ? rows[0].action_payload : null;
     if (!art?.file_url) return { needs_file: true, message: 'I don\'t have a file on record yet — run "Check my file" and I\'ll set up the fix.' };
+
+    // Orchestration: the file check may have ALREADY pre-created the checkout.
+    // Reuse it (no duplicate job) unless the customer asked for a different fix.
+    const pre = art?.ai_precheck?.recommended_fix;
+    if (pre?.checkout_url && (!input.fix_key || String(input.fix_key).toLowerCase() === pre.service)) {
+      return {
+        success: true, service: pre.service, label: pre.label, price: pre.price, job_id: pre.job_id, pay_url: pre.checkout_url,
+        message: `${pre.label} is $${pre.price}. ${pre.reason || ''} Here's your secure checkout — once it's paid we process it and email you the finished file:\n${pre.checkout_url}`,
+      };
+    }
     const email = art.customer_email || context?.email || null;
     if (!email) return { needs_email: true, message: 'I need the customer\'s email before setting up the fix — ask for it, then try again.' };
 

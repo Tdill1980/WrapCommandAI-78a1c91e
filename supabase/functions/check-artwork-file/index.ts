@@ -250,6 +250,21 @@ function buildChecks(real: RealAnalysis | null, ext: string, fileSize: number, s
   return checks;
 }
 
+// Map the checklist to the exact ShopFlow service to run next. This is what makes
+// the check PART OF the orchestration: it names the concrete fix + price so the
+// flow goes check -> fix -> pay -> process without a human deciding.
+function recommendFix(real: RealAnalysis | null, checks: Array<{ label: string; value: string; status: string }>, score: number): { service: string; label: string; price: number; reason: string } | null {
+  const dpiCheck = checks.find((c) => c.label.startsWith("Effective DPI"));
+  if (dpiCheck && (dpiCheck.status === "fail" || dpiCheck.status === "warn")) {
+    return { service: "upscale", label: "Print-Ready Prep", price: 199, reason: `Your file is ${dpiCheck.value} at your wrap size — a Print-Ready Prep upscale makes it print sharp.` };
+  }
+  // Low-res raster with no wrap size given, but clearly small.
+  if (real && !real.is_vector && real.width_px && real.width_px < 2000 && score < 6) {
+    return { service: "upscale", label: "Print-Ready Prep", price: 199, reason: "Low resolution for a full wrap — a Print-Ready Prep upscale makes it print-ready." };
+  }
+  return null;
+}
+
 // WrapGuruAI print-readiness analysis. Metadata alone can't confirm color space,
 // DPI, or font outlining, so we advise on them (matching the original WrapGuruAI
 // customer email) and add format-specific guidance.
@@ -299,6 +314,7 @@ function buildCustomerScoreEmailHTML(opts: {
   verdict: string;
   printReady: boolean;
   checks?: Array<{ label: string; value: string; status: string }>;
+  fix?: { label: string; price: number; reason: string; checkout_url?: string } | null;
 }): string {
   const scoreColor = opts.score >= 7 ? '#22c55e' : opts.score >= 4 ? '#f59e0b' : '#ef4444';
   const dot = (s: string) => s === 'pass' ? '🟢' : s === 'warn' ? '🟡' : s === 'fail' ? '🔴' : '⚪';
@@ -343,6 +359,15 @@ function buildCustomerScoreEmailHTML(opts: {
     <div style="padding:16px 24px 8px;">
       <div style="background:#161327;border:1px solid #2a2540;border-radius:12px;padding:16px;color:#e6e3f5;font-size:14px;line-height:1.6;">${opts.verdict}</div>
     </div>
+    ${opts.fix && opts.fix.checkout_url ? `
+    <div style="padding:8px 24px;">
+      <div style="background:linear-gradient(135deg,#e6007e,#7c3aed);border-radius:14px;padding:20px;text-align:center;">
+        <div style="font-size:16px;font-weight:800;color:#fff;">Fix it automatically — ${opts.fix.label} · $${opts.fix.price}</div>
+        <div style="font-size:13px;color:#f3e8ff;margin:6px 0 14px;">${opts.fix.reason}</div>
+        <a href="${opts.fix.checkout_url}" style="display:inline-block;background:#fff;color:#7c3aed;padding:13px 30px;border-radius:10px;text-decoration:none;font-weight:800;font-size:15px;">Fix My File — $${opts.fix.price}</a>
+        <div style="font-size:12px;color:#f3e8ff;margin-top:10px;">Pay once → we process it and email you the print-ready file.</div>
+      </div>
+    </div>` : ''}
     <div style="text-align:center;padding:20px 24px 32px;">
       <a href="https://weprintwraps.com/quote" style="display:inline-block;background:#e6007e;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">Get My Wrap Quote</a>
       <div style="font-size:12px;color:#7a7790;margin-top:16px;">Our design team will follow up personally. Questions? Reply to this email.</div>
@@ -431,7 +456,39 @@ serve(async (req) => {
     const sqftForChecks = vehicle_info?.sqft ? Number(vehicle_info.sqft) : null;
     const checks = buildChecks(real, ext, file_size || 0, sqftForChecks);
 
-    console.log('[CheckArtwork] Assessment:', assessment, 'Analysis:', analysis, 'Checks:', checks);
+    // ORCHESTRATION: the check names the exact ShopFlow fix to run next, and — when
+    // we have the customer's email — pre-creates the checkout so the result is a
+    // one-click "Fix it" (check -> fix -> pay -> process -> deliver, one pipeline).
+    let recommended_fix: any = recommendFix(real, checks, assessment.score);
+    if (recommended_fix && customer_email) {
+      try {
+        const create = await fetch('https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create', service: recommended_fix.service, file_url, email: customer_email,
+            vehicle: vehicle_info ? `${vehicle_info.year || ''} ${vehicle_info.make || ''} ${vehicle_info.model || ''}`.trim() : undefined,
+            notes: `WrapGuru file check • score ${assessment.score}/10 • ${file_name}`,
+            callback_url: `${supabaseUrl}/functions/v1/wrapguru-shopflow?action=callback`,
+            return_url: 'https://weprintwraps.com/?shopflow=success',
+          }),
+        });
+        const cj = await create.json().catch(() => ({}));
+        if (cj.ok && cj.checkout_url) {
+          recommended_fix = { ...recommended_fix, price: cj.price ?? recommended_fix.price, checkout_url: cj.checkout_url, job_id: cj.job_id };
+          // Store the delivery mapping so the bridge callback can email the finished file.
+          await supabase.from('ai_actions').insert({
+            action_type: 'shopflow_job', organization_id: '031ac427-f078-4086-a9bc-7bdb78cc1c73', priority: 'high', resolved: false,
+            action_payload: {
+              job_id: cj.job_id, service: recommended_fix.service, price: cj.price, status: 'pending_payment',
+              customer_email, customer_name: customer_name || null, file_name, file_url, session_id, source: 'file_check',
+            },
+          });
+          console.log('[CheckArtwork] Pre-created ShopFlow job', cj.job_id, recommended_fix.service);
+        }
+      } catch (e) { console.error('[CheckArtwork] shopflow pre-create failed:', e); }
+    }
+
+    console.log('[CheckArtwork] Assessment:', assessment, 'Checks:', checks, 'Fix:', recommended_fix);
 
     // Create ai_actions record for Ops Desk
     const { data: actionRecord, error: actionError } = await supabase
@@ -464,7 +521,8 @@ serve(async (req) => {
             // REAL parse results (null if the file couldn't be read)
             real_analysis: (analysis as any).real || null,
             positives: (analysis as any).good || [],
-            checks
+            checks,
+            recommended_fix: recommended_fix || null
           },
           customer_email_sent: false,
           response_options: ['design_fee', 'wrap_quote'],
@@ -587,6 +645,7 @@ serve(async (req) => {
           verdict: analysis.verdict,
           printReady: analysis.printReady,
           checks,
+          fix: recommended_fix || null,
         });
         await resend.emails.send({
           from: 'WrapGuruAI <hello@weprintwraps.com>',
@@ -629,10 +688,12 @@ serve(async (req) => {
           recommendations: analysis.recommendations,
           positives: (analysis as any).good || [],
           checks,
+          recommended_fix: recommended_fix || null,
           real_analysis: (analysis as any).real || null,
           size_assessment: assessment.sizeAssessment,
           file_size_formatted: formatFileSize(file_size || 0)
         },
+        recommended_fix: recommended_fix || null,
         customer_email_sent: customerEmailSent,
         message: `Got your file! Here's your WrapGuruAI analysis — Score: ${assessment.score}/10 ${scoreEmoji}\n\n${analysis.verdict}\n\n${analysis.issues.length > 0 ? '⚠️ Issues to check:\n' + analysis.issues.map(i => '• ' + i).join('\n') + '\n\n' : ''}${customerEmailSent ? '📧 I just emailed you the full breakdown.\n\n' : ''}Our design team will also review it personally and follow up. 💡 For instant sq ft pricing, use our quote tool at weprintwraps.com/quote.`,
         next_steps: 'Design team will review and email you with detailed analysis and quote.'
