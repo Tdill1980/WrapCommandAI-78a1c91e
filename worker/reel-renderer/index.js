@@ -51,11 +51,14 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY);
 {
   const ref = (SUPABASE_URL.match(/https:\/\/([a-z0-9]+)\./) || [])[1] || "unknown";
   db.from("reel_render_jobs")
-    .select("*", { count: "exact", head: true })
+    .select("id, status, created_at")
     .eq("status", "queued")
-    .then(({ count, error }) => {
-      console.log(`[reel-renderer] diag project=${ref} queued=${count} err=${error ? error.message : "none"}`);
-    });
+    .order("created_at", { ascending: true })
+    .limit(3)
+    .then((res) => {
+      console.log(`[reel-renderer] diag project=${ref} result=${JSON.stringify({ rows: res.data, error: res.error, status: res.status, statusText: res.statusText })}`);
+    })
+    .catch((e) => console.log(`[reel-renderer] diag threw: ${e && e.message}`));
 }
 
 let running = false;
