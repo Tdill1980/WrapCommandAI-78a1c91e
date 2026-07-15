@@ -71,8 +71,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let jobIdForFailure: string | null = null;
   try {
     const { job_id, scenes, transcript } = await req.json();
+    jobIdForFailure = typeof job_id === "string" ? job_id : null;
 
     if (!job_id || !scenes) {
       return new Response(JSON.stringify({ error: "job_id and scenes required" }), { 
@@ -140,14 +142,25 @@ Generate all viable shorts.`
 
     console.log(`Generated ${shorts.length} shorts for job ${job_id}`);
 
-    // Save into database
-    await supabase
-      .from("youtube_editor_jobs")
-      .update({
-        shorts,
-        processing_status: "complete"
-      })
-      .eq("id", job_id);
+    // Save into database — the column is `generated_shorts` (there is no `shorts`
+    // column; writing it made PostgREST reject the whole update, so jobs never
+    // reached "complete" and the frontend polled forever).
+    // AutoSplit passes ad-hoc ids like "autosplit-<ts>" that aren't UUIDs — skip
+    // the DB write for those instead of erroring.
+    const isUuid = typeof job_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(job_id);
+    if (isUuid) {
+      const { error: updateErr } = await supabase
+        .from("youtube_editor_jobs")
+        .update({
+          generated_shorts: shorts,
+          processing_status: "complete"
+        })
+        .eq("id", job_id);
+      if (updateErr) {
+        console.error(`Failed to persist shorts for job ${job_id}:`, updateErr);
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, shorts }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -156,11 +169,22 @@ Generate all viable shorts.`
   } catch (err) {
     console.error("yt-generate-shorts error:", err);
 
+    // Terminate the job so the frontend poll stops (otherwise it spins forever).
+    try {
+      if (jobIdForFailure &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobIdForFailure)) {
+        await supabase
+          .from("youtube_editor_jobs")
+          .update({ processing_status: "failed" })
+          .eq("id", jobIdForFailure);
+      }
+    } catch { /* best-effort */ }
+
     return new Response(JSON.stringify({
       success: false,
       error: err instanceof Error ? err.message : "Unknown error",
       shorts: []
-    }), { 
+    }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });

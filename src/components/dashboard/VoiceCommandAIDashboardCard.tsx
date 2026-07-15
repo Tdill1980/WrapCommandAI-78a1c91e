@@ -62,7 +62,7 @@ export function VoiceCommandAIDashboardCard({ className }: { className?: string 
         supabase
           .from("ai_actions")
           .select("id", { count: "exact", head: true })
-          .in("action_type", ["create_quote", "auto_quote_generated"])
+          .in("action_type", ["create_quote", "auto_quote_generated", "quote_created_from_chat"])
           .gte("created_at", twentyFourHoursAgo),
       ]);
 

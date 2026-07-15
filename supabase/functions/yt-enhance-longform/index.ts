@@ -151,8 +151,13 @@ serve(async (req) => {
       const parsed = JSON.parse(content.match(/({[\s\S]*})/)?.[1] ?? "{}");
       enhancementData = parsed;
     } catch {
+      // Fail loudly — previously we returned success:true with an {error} blob
+      // that the frontend rendered as an empty "success" panel.
       console.error("Failed to parse AI response");
-      enhancementData = { error: "Failed to parse enhancement data" };
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to parse enhancement data" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 502 }
+      );
     }
 
     console.log(`Generated enhancements for job ${job_id}`);

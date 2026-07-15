@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { MessageCircle, X, Send, Car, Palette, Package } from "lucide-react";
+import { X, Send, Package, Mic, Loader2, DollarSign, FileText, LifeBuoy, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase, callEdgeFunction } from "@/integrations/supabase/production-client";
 import { cn } from "@/lib/utils";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
+import aceAvatar from "@/assets/wrapcommand-logo-astronaut.png";
 
 interface Message {
   id: string;
@@ -12,9 +14,11 @@ interface Message {
 }
 
 const QUICK_ACTIONS = [
-  { icon: Car, label: "How much is my wrap project?", message: "How much is my wrap project?", primary: true },
-  { icon: Package, label: "How do I order?", message: "How do I place an order?" },
-  { icon: Palette, label: "Ask me about RestyleProAI", message: "Tell me about RestyleProAI and how it can help visualize my wrap" },
+  { icon: DollarSign, label: "Get a wrap price", message: "How much is my wrap project?", primary: true },
+  { icon: FileText, label: "Check my file", message: "Can you check if my artwork file is print-ready? I'd like to upload it for a quick review." },
+  { icon: LifeBuoy, label: "Open a trouble ticket", message: "I have a problem and need to open a support ticket — please have a rep reach out to me." },
+  { icon: Package, label: "Check my order status", message: "I need to check on my order status" },
+  { icon: Palette, label: "Ask about RestyleProAI", message: "Tell me about RestyleProAI and how it can help visualize my wrap" },
 ];
 
 export function WebsiteChatWidget() {
@@ -24,7 +28,34 @@ export function WebsiteChatWidget() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(() => `website-${crypto.randomUUID()}`);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [geo, setGeo] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { isRecording, isProcessing, startRecording, stopRecording } = useVoiceInput();
+
+  // Capture visitor geo once (mirrors the embed widget) so admin sees exact location.
+  useEffect(() => {
+    fetch("https://ipapi.co/json/")
+      .then((r) => r.json())
+      .then((g) => setGeo(g))
+      .catch(() => {});
+  }, []);
+
+  // Push-to-talk: tap the mic to start, tap again to stop + transcribe into the input
+  const handleMic = async () => {
+    if (isProcessing || isLoading) return;
+    if (isRecording) {
+      try {
+        const text = await stopRecording();
+        if (text?.trim()) {
+          setInput((prev) => (prev ? `${prev} ${text}`.trim() : text.trim()));
+        }
+      } catch {
+        /* toast handled inside the hook */
+      }
+    } else {
+      await startRecording();
+    }
+  };
 
   // Add welcome message when chat opens
   useEffect(() => {
@@ -33,7 +64,7 @@ export function WebsiteChatWidget() {
         {
           id: "welcome",
           role: "assistant",
-          content: "Hey! Welcome to WePrintWraps support. What can I help you with today?",
+          content: "Hey, I'm the Wrap Guru with WePrintWraps! Tell me your vehicle and I'll get you a wrap price, a cart link, or connect you with the team. What are you working on?",
         },
       ]);
     }
@@ -68,6 +99,7 @@ export function WebsiteChatWidget() {
         message_text: text,
         page_url: window.location.href,
         referrer: document.referrer || "",
+        geo,
       });
 
       if (data?.reply || data?.message) {
@@ -159,8 +191,9 @@ export function WebsiteChatWidget() {
         style={{
           boxShadow: "0 4px 20px rgba(124, 58, 237, 0.4), 0 0 40px rgba(37, 99, 235, 0.2)"
         }}
+        aria-label="Chat with the Wrap Guru"
       >
-        <MessageCircle className="w-7 h-7 relative z-10" />
+        <img src={aceAvatar} alt="Wrap Guru" className="w-11 h-11 relative z-10 object-contain drop-shadow" />
       </button>
     );
   }
@@ -185,14 +218,14 @@ export function WebsiteChatWidget() {
         <div className="absolute inset-0 bg-black/10" />
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center ring-2 ring-white/30 shadow-lg backdrop-blur-sm">
-              <MessageCircle className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center ring-2 ring-white/30 shadow-lg backdrop-blur-sm overflow-hidden">
+              <img src={aceAvatar} alt="Wrap Guru" className="w-9 h-9 object-contain" />
             </div>
             <div>
-              <span className="font-bold text-white block text-base tracking-tight">WPW Support Team</span>
+              <span className="font-bold text-white block text-base tracking-tight">Wrap Guru</span>
               <span className="text-white/90 text-xs flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]" />
-                Website Chat • Online
+                WePrintWraps × RestyleProAI • Online
               </span>
             </div>
           </div>
@@ -315,8 +348,8 @@ export function WebsiteChatWidget() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type a message..."
-            disabled={isLoading}
+            placeholder={isRecording ? "Listening… tap the mic to stop" : isProcessing ? "Transcribing…" : "Type or tap the mic to talk…"}
+            disabled={isLoading || isProcessing}
             className={cn(
               "flex-1 bg-[#2a2a4a] border border-white/10 rounded-full",
               "px-4 py-2.5 text-sm text-white placeholder:text-gray-400",
@@ -324,6 +357,22 @@ export function WebsiteChatWidget() {
               "transition-all duration-200"
             )}
           />
+          {/* Voice input — record, transcribe, drop into the box */}
+          <Button
+            size="icon"
+            onClick={handleMic}
+            disabled={isLoading || isProcessing}
+            aria-label={isRecording ? "Stop recording" : "Record voice message"}
+            className={cn(
+              "shrink-0 rounded-full w-10 h-10 transition-all duration-200",
+              isRecording
+                ? "bg-red-500 hover:bg-red-600 animate-pulse"
+                : "bg-[#2a2a4a] border border-purple-500/40 hover:bg-purple-500/20",
+              "disabled:opacity-50"
+            )}
+          >
+            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
+          </Button>
           <Button
             size="icon"
             onClick={() => handleSend()}
@@ -339,10 +388,10 @@ export function WebsiteChatWidget() {
             <Send className="w-4 h-4" />
           </Button>
         </div>
-        {/* WePrintWraps.com branding - Dark */}
+        {/* WePrintWraps × RestyleProAI branding */}
         <div className="mt-2 text-center">
           <span className="text-xs text-gray-500">Powered by </span>
-          <span className="text-xs font-medium text-fuchsia-400">weprintwraps.com</span>
+          <span className="text-xs font-medium text-fuchsia-400">WePrintWraps × RestyleProAI</span>
         </div>
       </div>
     </div>

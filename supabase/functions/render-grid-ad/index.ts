@@ -51,7 +51,42 @@ serve(async (req) => {
   }
 
   try {
-    const body: GridRenderRequest = await req.json();
+    const body: GridRenderRequest & { action?: string; renderId?: string } = await req.json();
+
+    // Status poll for an in-progress Creatomate render (mirrors render-static-ad).
+    // The client hook (useGridAdRender) polls with { action: "status", renderId }.
+    if (body.action === "status") {
+      const creatomateApiKey = Deno.env.get("CREATOMATE_API_KEY");
+      const renderId = body.renderId;
+      if (!renderId) {
+        return new Response(
+          JSON.stringify({ error: "renderId required for status check" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!creatomateApiKey) {
+        return new Response(
+          JSON.stringify({ error: "CREATOMATE_API_KEY not configured" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const statusRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
+        headers: { Authorization: `Bearer ${creatomateApiKey}` },
+      });
+      const statusData = await statusRes.json();
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: statusData.status,
+          url: statusData.url || null,
+          error: statusData.error_message || null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const {
       templateId,
       gridSize,

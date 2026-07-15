@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Wrap Guru — Test Page (not the live site)</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1020;
+      color: #e6e6f0;
+      line-height: 1.55;
+    }
+    .banner {
+      background: linear-gradient(135deg, #e6007e 0%, #7c3aed 100%);
+      color: #fff;
+      padding: 14px 20px;
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 28px 22px 120px; }
+    h1 { font-size: 22px; margin: 22px 0 4px; }
+    .sub { color: #9aa0b4; margin-top: 0; }
+    .card {
+      background: #171833;
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin: 18px 0;
+    }
+    .card h2 { font-size: 15px; margin: 0 0 10px; color: #c9b8ff; text-transform: uppercase; letter-spacing: 0.5px; }
+    ol { margin: 0; padding-left: 20px; }
+    li { margin: 9px 0; }
+    code {
+      background: #0f3460;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #7dd3fc;
+    }
+    .verify { color: #86efac; font-size: 13px; display: block; margin-top: 2px; }
+    .pill {
+      display: inline-block; background: #22c55e; color: #05270f;
+      font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 8px;
+    }
+    .hint { font-size: 13px; color: #9aa0b4; }
+    .arrow { color: #e879f9; }
+  </style>
+</head>
+<body>
+  <div class="banner">🧪 WRAP GURU TEST PAGE — this is NOT weprintwraps.com. Safe to poke. No real customers here.</div>
+  <div class="wrap">
+    <h1>Wrap Guru end-to-end test <span class="pill">test mode</span></h1>
+    <p class="sub">The chat bubble is bottom-right. Escalations are temporarily routed to your inbox only. Use <strong>your own email</strong> as the customer so quotes come to you.</p>
+
+    <div class="card">
+      <h2>Run this script in the chat</h2>
+      <ol>
+        <li>“How much to wrap a 2021 Ford Transit?”
+          <span class="verify">✓ Wrap Guru answers with a price → chat works + vehicle/pricing tools fire</span>
+        </li>
+        <li>“My name is Trish, email trish@weprintwraps.com, phone 623-313-5418”
+          <span class="verify">✓ email saved → check <code>/website-admin</code> contact + <code>contacts</code> table</span>
+        </li>
+        <li>“Yes, send me the quote”
+          <span class="verify">✓ quote email hits your inbox AND shows in <code>/website-admin</code> → Quotes tab</span>
+        </li>
+        <li>“Great, add it to my cart”
+          <span class="verify">✓ Wrap Guru returns a <code>weprintwraps.com/cart/?add-to-cart=…</code> link — click it, confirm it lands in the cart</span>
+        </li>
+        <li>Tap the 🎤 mic, say a sentence
+          <span class="verify">✓ your words appear in the input box → transcription works</span>
+        </li>
+        <li>(optional) “This wrap arrived damaged”
+          <span class="verify">✓ escalation email arrives — to YOU only while in test mode</span>
+        </li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>Then verify the transcript</h2>
+      <p class="hint">Open <code>/website-admin</code> <span class="arrow">→</span> Website Chat tab <span class="arrow">→</span> your conversation. Every message you sent and every Wrap Guru reply should be there in order — nothing dropped.</p>
+    </div>
+
+    <p class="hint">When everything passes: set <code>ESCALATION_TEST_OVERRIDE = null</code> in <code>command-chat</code>, redeploy, then paste the embed snippet on weprintwraps.com.</p>
+  </div>
+
+  <!-- Wrap Guru widget — same standalone script your live site would use -->
+  <script
+    src="./chat-widget.js"
+    data-org="wpw"
+    data-agent="wpw_support"
+    data-mode="live"
+    data-theme="dark-pro"></script>
+</body>
+</html>

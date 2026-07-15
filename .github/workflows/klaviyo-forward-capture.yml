@@ -1,0 +1,33 @@
+# Forward-capture: every day, add NEW quote-requesters (from design@ + hello@)
+# into the Klaviyo list "WPW Quote Requesters (Outlook)" (QQVgmG). Keeps the
+# marketing list building automatically from real, high-intent inbound. Klaviyo
+# dedupes, so re-adds are harmless. Read-then-import; no mailbox writes.
+name: Klaviyo Forward-Capture (quote requesters)
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # daily 08:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Capture new quote-requesters into Klaviyo
+        run: |
+          set -euo pipefail
+          FN="https://qxllysilzonrlyoaomce.supabase.co/functions/v1"
+          echo "Pulling quote-request senders (last 2 days)…"
+          RS=$(curl -fsS --max-time 175 -X POST "$FN/mailbox-quote-report" \
+            -H "Content-Type: application/json" \
+            -d '{"sinceDays":2,"mailboxes":["design@weprintwraps.com","hello@weprintwraps.com"]}')
+          SENDERS=$(echo "$RS" | jq -c '[.mailboxes[].request_senders[]?] | unique_by(.email)')
+          N=$(echo "$SENDERS" | jq 'length')
+          echo "new quote-requesters: $N"
+          if [ "$N" -gt 0 ]; then
+            curl -fsS --max-time 120 -X POST "$FN/klaviyo-backfill-quoters" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -nc --argjson s "$SENDERS" '{dry_run:false,classify:false,listName:"WPW Quote Requesters (Outlook)",senders:$s}')"
+            echo
+          fi
+          echo "Done."

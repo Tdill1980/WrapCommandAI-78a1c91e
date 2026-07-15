@@ -56,7 +56,7 @@ export const MUSIC_LIBRARY: MusicTrack[] = [
 export function resolveMusicUrl(styleOrUrl: string | null | undefined): string | null {
   if (!styleOrUrl) return null;
 
-  // Only absolute URLs are renderable by Creatomate (and playable reliably in-app).
+  // Only absolute URLs are renderable by the ffmpeg worker (and playable reliably in-app).
   if (/^https?:\/\//i.test(styleOrUrl)) {
     return styleOrUrl;
   }

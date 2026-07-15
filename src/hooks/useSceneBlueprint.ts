@@ -81,7 +81,7 @@ export function useSceneBlueprint(initialBlueprint: SceneBlueprint | null = null
   }, []);
   
   // ============ SELECT FORMAT (Target Lock) ============
-  // Sets the render contract - what Creatomate will produce
+  // Sets the render contract - what the renderer will produce
   const setFormat = useCallback((
     format: 'reel' | 'story' | 'short',
     aspectRatio: '9:16' | '1:1' | '16:9',

@@ -117,7 +117,7 @@ export function useReelCaptions() {
     setSettings((prev) => ({ ...prev, ...updates }));
   }, []);
 
-  const exportForCreatomate = useCallback(() => {
+  const exportForRender = useCallback(() => {
     return captions.map((cap) => ({
       text: cap.text,
       time: cap.start,
@@ -138,6 +138,6 @@ export function useReelCaptions() {
     updateCaption,
     removeCaption,
     updateSettings,
-    exportForCreatomate,
+    exportForRender,
   };
 }

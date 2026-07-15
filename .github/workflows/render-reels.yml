@@ -38,17 +38,39 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install worker deps
         working-directory: worker/reel-renderer
         run: npm install --omit=dev
+
+      # The stored SUPABASE_SERVICE_ROLE_KEY secret went stale after a key
+      # rotation (the worker was getting 401 Invalid API key). Resolve the
+      # CURRENT service_role key from the Management API at run time, falling
+      # back to the stored secret if the lookup fails.
+      - name: Resolve Supabase service key
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FALLBACK_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          KEY=$(curl -fsS "https://api.supabase.com/v1/projects/qxllysilzonrlyoaomce/api-keys?reveal=true" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            | jq -r '.[] | select(.name=="service_role") | .api_key' 2>/dev/null || true)
+          if [ -z "$KEY" ] || [ "$KEY" = "null" ]; then
+            echo "Management API lookup failed; falling back to stored secret"
+            KEY="$FALLBACK_KEY"
+          else
+            echo "Resolved current service_role key from Management API"
+          fi
+          echo "::add-mask::$KEY"
+          echo "RESOLVED_SERVICE_KEY=$KEY" >> "$GITHUB_ENV"
 
       - name: Render queued reels (drain once)
         working-directory: worker/reel-renderer
         env:
           RUN_ONCE: "1"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.RESOLVED_SERVICE_KEY }}
           RENDER_BUCKET: media-library
         run: node index.js

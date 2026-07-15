@@ -26,6 +26,9 @@ import { ContentFile, VideoProcessResult } from "@/hooks/useContentBox";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { useNavigate } from "react-router-dom";
 import { useHybridGenerate } from "@/hooks/useHybridGenerate";
+import { useSmartAssist } from "@/hooks/useSmartAssist";
+import { useNativeReelRender } from "@/hooks/useNativeReelRender";
+import { translateToBlueprint } from "@/lib/editor-brain";
 import { EditorModeProvider, useEditorMode } from "@/contexts/EditorModeContext";
 import { EditorModeTabs, EditorToolSidebar } from "@/components/editor";
 import { MusicPicker } from "./MusicPicker";
@@ -50,11 +53,16 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
   const [copied, setCopied] = useState(false);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   
-  // Creatomate render state
+  // Native render (text overlay) state
   const [headline, setHeadline] = useState("");
   const [subtext, setSubtext] = useState("");
   const [videoScript, setVideoScript] = useState("");
   const [selectedMusicUrl, setSelectedMusicUrl] = useState<string | null>(null);
+
+  // AI-automatic editing state (Smart Assist / Auto Create)
+  const [smartPrompt, setSmartPrompt] = useState("");
+  const smartAssist = useSmartAssist();
+  const nativeRender = useNativeReelRender();
   
   // Hybrid Mode state
   const [contentMode, setContentMode] = useState<'auto' | 'hybrid' | 'exact'>('auto');
@@ -118,6 +126,56 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
     navigate("/mighty-edit");
   };
 
+  // ===== AI AUTOMATIC EDITING (native, ffmpeg — no Creatomate) =====
+  const clipsFromFile = () =>
+    selectedFile?.file_url
+      ? [{ id: selectedFile.id, url: selectedFile.file_url, duration: selectedFile.duration_seconds || undefined }]
+      : [];
+
+  // Smart Assist: analyze the clip and assemble an editable creative plan.
+  const handleSmartAnalyze = async () => {
+    if (!selectedFile?.file_url) {
+      toast.error("Select a video first");
+      return;
+    }
+    await smartAssist.runSmartAssist(clipsFromFile(), smartPrompt || undefined);
+  };
+
+  // Render the current Smart Assist plan on the self-hosted ffmpeg pipeline.
+  const handleRenderCreative = async () => {
+    if (!smartAssist.creative || !selectedFile) return;
+    const blueprint = translateToBlueprint({
+      creative: smartAssist.creative,
+      clips: clipsFromFile(),
+      brand: selectedFile.brand,
+      source: "smart_assist",
+    });
+    await nativeRender.render(blueprint, {
+      musicUrl: selectedMusicUrl,
+      title: smartAssist.creative.hook,
+    });
+  };
+
+  // Auto Create: one click → analyze → assemble → render, fully automatic.
+  const handleAutoCreate = async () => {
+    if (!selectedFile?.file_url) {
+      toast.error("Select a video first");
+      return;
+    }
+    const result = await smartAssist.runSmartAssist(clipsFromFile(), smartPrompt || undefined);
+    if (!result?.creative) return;
+    const blueprint = translateToBlueprint({
+      creative: result.creative,
+      clips: clipsFromFile(),
+      brand: selectedFile.brand,
+      source: "ai",
+    });
+    await nativeRender.render(blueprint, {
+      musicUrl: selectedMusicUrl,
+      title: result.creative.hook,
+    });
+  };
+
   const handleGenerateHybrid = async () => {
     if (!selectedFile?.file_url && contentMode !== 'auto') {
       toast.error("Please select a video or provide a brief");
@@ -142,7 +200,7 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
     if (hybridOutput?.cta) {
       setSubtext(hybridOutput.cta);
     }
-    toast.success("Applied to Creatomate render settings");
+    toast.success("Applied to render settings");
   };
 
   const handleAddHybridToScheduler = async () => {
@@ -254,6 +312,86 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
     );
   }
 
+  // ===== Shared AI-editing UI (used by Smart Assist + Auto Create) =====
+  const creativePlanCard = smartAssist.creative && (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          AI Creative Plan
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <p className="text-xs font-medium text-foreground">Hook</p>
+          <p className="text-sm text-muted-foreground">{smartAssist.creative.hook}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-foreground mb-1">
+            Scene Sequence ({smartAssist.creative.sequence.length})
+          </p>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {smartAssist.creative.sequence.map((seq, i) => {
+              const overlay = smartAssist.creative!.overlays.find(
+                (o) => o.start >= seq.start && o.start < seq.end
+              );
+              return (
+                <div key={i} className="flex items-start gap-2 text-xs bg-muted p-2 rounded">
+                  <span className="text-primary font-mono whitespace-nowrap">
+                    {seq.start.toFixed(1)}–{seq.end.toFixed(1)}s
+                  </span>
+                  <span className="text-muted-foreground flex-1">
+                    {overlay?.text || seq.label || `Scene ${i + 1}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-foreground">CTA</p>
+          <p className="text-sm text-muted-foreground">{smartAssist.creative.cta}</p>
+        </div>
+        <Button
+          className="w-full bg-gradient-to-r from-[hsl(var(--instagram-blue))] to-[hsl(var(--instagram-pink))]"
+          disabled={nativeRender.isRendering}
+          onClick={handleRenderCreative}
+        >
+          {nativeRender.isRendering ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Rendering on ffmpeg…
+            </>
+          ) : (
+            <>
+              <Video className="w-4 h-4 mr-2" />
+              Render Reel (Native)
+            </>
+          )}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  const renderOutputCard = nativeRender.outputUrl && (
+    <Card className="border-green-500/30 bg-green-500/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-green-500" />
+          Rendered Reel
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <video src={nativeRender.outputUrl} controls className="w-full rounded-lg bg-black" />
+        <a href={nativeRender.outputUrl} download target="_blank" rel="noopener noreferrer">
+          <Button variant="outline" className="w-full">
+            <Download className="w-4 h-4 mr-2" /> Download
+          </Button>
+        </a>
+      </CardContent>
+    </Card>
+  );
+
   // Render content based on current mode
   const renderModeContent = () => {
     switch (mode) {
@@ -345,24 +483,100 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
 
       case 'smart_assist':
         return (
-          <Card className="p-8 text-center border-dashed">
-            <Sparkles className="w-12 h-12 mx-auto mb-4 text-primary/50" />
-            <h3 className="text-lg font-medium text-foreground mb-2">Smart Assist Coming Soon</h3>
-            <p className="text-muted-foreground text-sm">
-              AI-powered clip analysis, scene detection, and creative suggestions
-            </p>
-          </Card>
+          <>
+            <Card>
+              <CardHeader className="pb-2 px-3 sm:px-6">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  Smart Assist — AI analyzes, you approve
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  AI detects the best moments, builds a scene sequence + overlays. Review the plan, then render.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3 px-3 sm:px-6">
+                <div className="space-y-2">
+                  <Label htmlFor="smart-prompt" className="text-xs">What's this reel about? (optional)</Label>
+                  <Input
+                    id="smart-prompt"
+                    placeholder="e.g. matte black Tesla wrap reveal"
+                    value={smartPrompt}
+                    onChange={(e) => setSmartPrompt(e.target.value)}
+                    className="bg-background h-10"
+                  />
+                </div>
+                <MusicPicker selectedUrl={selectedMusicUrl} onSelect={setSelectedMusicUrl} />
+                <Button
+                  className="w-full bg-gradient-to-r from-[hsl(var(--instagram-purple))] to-[hsl(var(--instagram-pink))]"
+                  disabled={smartAssist.loading}
+                  onClick={handleSmartAnalyze}
+                >
+                  {smartAssist.loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Analyzing clip…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Analyze &amp; Build Plan
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+            {creativePlanCard}
+            {renderOutputCard}
+          </>
         );
 
       case 'auto_create':
         return (
-          <Card className="p-8 text-center border-dashed">
-            <Wand2 className="w-12 h-12 mx-auto mb-4 text-primary/50" />
-            <h3 className="text-lg font-medium text-foreground mb-2">Auto Create Coming Soon</h3>
-            <p className="text-muted-foreground text-sm">
-              Fully automated timeline, variants, and multi-platform export
-            </p>
-          </Card>
+          <>
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-purple-500/5">
+              <CardHeader className="pb-2 px-3 sm:px-6">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Wand2 className="w-4 h-4 text-primary" />
+                  Auto Create — one click, fully automatic
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  AI analyzes, edits, and renders the reel end-to-end on the native ffmpeg pipeline.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3 px-3 sm:px-6">
+                <div className="space-y-2">
+                  <Label htmlFor="auto-prompt" className="text-xs">Topic / hook direction (optional)</Label>
+                  <Input
+                    id="auto-prompt"
+                    placeholder="e.g. before & after color change"
+                    value={smartPrompt}
+                    onChange={(e) => setSmartPrompt(e.target.value)}
+                    className="bg-background h-10"
+                  />
+                </div>
+                <MusicPicker selectedUrl={selectedMusicUrl} onSelect={setSelectedMusicUrl} />
+                <Button
+                  className="w-full bg-gradient-to-r from-[hsl(var(--instagram-blue))] via-[hsl(var(--instagram-purple))] to-[hsl(var(--instagram-pink))]"
+                  disabled={smartAssist.loading || nativeRender.isRendering}
+                  onClick={handleAutoCreate}
+                >
+                  {smartAssist.loading || nativeRender.isRendering ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      {smartAssist.loading ? "Analyzing…" : "Rendering…"}
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-4 h-4 mr-2" />
+                      Auto-Create Reel
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+            {smartAssist.creative && !nativeRender.outputUrl && creativePlanCard}
+            {renderOutputCard}
+          </>
         );
 
       case 'hybrid':
@@ -420,7 +634,7 @@ function AIVideoEditorContent({ selectedFile, onProcess, processing }: AIVideoEd
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Video className="w-4 h-4 text-primary" />
-                  Render Reel with Creatomate
+                  Render Reel in MightyEdit
                 </CardTitle>
                 <BrandVoiceIndicator />
               </div>

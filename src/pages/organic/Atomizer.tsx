@@ -57,8 +57,14 @@ export default function Atomizer() {
 
   const handleAtomize = async () => {
     if (!textInput.trim()) return;
-    await atomizeContent({ text: textInput, sourceType });
-    setTextInput("");
+    try {
+      await atomizeContent({ text: textInput, sourceType });
+      // Only clear the input after a confirmed save — clearing on failure
+      // silently destroyed the user's pasted content.
+      setTextInput("");
+    } catch {
+      // Error toast already shown by the hook; keep the user's text.
+    }
   };
 
   const handleGenerate = async (atom: any, format: string, style: string) => {

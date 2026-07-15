@@ -175,7 +175,7 @@ export function ContentCalendarEditModal({
           },
         });
       } else if (contentType === 'static' || contentType === 'carousel') {
-        navigate('/organic/static-creator', { 
+        navigate('/organic/static', { 
           state: { 
             calendarItem: content,
             autoGenerate: true,

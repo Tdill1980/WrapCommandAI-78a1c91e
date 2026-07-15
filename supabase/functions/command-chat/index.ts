@@ -11,11 +11,94 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'gpt-4o';
 const ORG_ID = '031ac427-f078-4086-a9bc-7bdb78cc1c73'; // WePrintWraps
 
 // A human rep is only pinged when the customer asks for one (rush jobs / real issues)
 const OPERATOR_PHONE = '+14807726003'; // Jackson
+
+// =====================================================
+// 🧪 TEST MODE — set back to null before going live!
+// While this holds an email, EVERY escalation is emailed here instead of the
+// real team, the silent CC is skipped, and the operator SMS is suppressed — so
+// you can test the "forward a problem ticket" flow without pinging Jackson/
+// Lance/Grant. Set to null to restore normal team routing + SMS.
+// =====================================================
+const ESCALATION_TEST_OVERRIDE: string | null = 'trish@weprintwraps.com';
+
+// =====================================================
+// ACE — self-contained catalog / pricing / routing
+// (These used to live in cmd-* micro-functions that were
+//  never deployed, so every tool 500'd. Now inline.)
+// =====================================================
+
+// WPW product catalog — prices current as of 2026-07 (window perf reconciled to $5.95)
+const WPW_PRODUCTS: Record<string, { id: number; name: string; price: number; type: 'per_sqft' | 'per_yard' | 'flat'; url: string }> = {
+  avery_wrap:    { id: 79,    name: 'Avery MPI 1105 with DOL 1460Z', price: 5.27,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/' },
+  '3m_wrap':     { id: 72,    name: '3M IJ180Cv3 with 8518',         price: 5.27,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/3m-ij180-printed-wrap-film/' },
+  cut_avery:     { id: 108,   name: 'Avery Contour-Cut',             price: 6.32,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/avery-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/' },
+  cut_3m:        { id: 19420, name: '3M Contour-Cut',                price: 6.92,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/3m-cut-contour-vinyl-graphics-54-roll-max-artwork-size-50/' },
+  window_perf:   { id: 80,    name: 'Perforated Window Vinyl 50/50', price: 5.95,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/perforated-window-vinyl-5050-unlaminated/' },
+  wall_wrap:     { id: 70093, name: 'Wall Wrap Printed Vinyl',       price: 3.25,  type: 'per_sqft', url: 'https://weprintwraps.com/our-products/wall-wrap-printed-vinyl/' },
+  camo_carbon:   { id: 1726,  name: 'Camo & Carbon (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/camo-carbon-wrap-by-the-yard/' },
+  metal_marble:  { id: 39698, name: 'Metal & Marble (by the yard)',  price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-metal-marble/' },
+  wicked_wild:   { id: 4181,  name: 'Wicked & Wild (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-wicked-wild-wrap-prints/' },
+  bape_camo:     { id: 42809, name: 'Bape Camo (by the yard)',       price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-bape-camo/' },
+  modern_trippy: { id: 52489, name: 'Modern & Trippy (by the yard)', price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-modern-trippy/' },
+  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 975,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
+  design_output: { id: 58160, name: 'Design Setup / File Output',    price: 199,   type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+};
+
+// Escalation routing — the WPW management team (problem tickets forward here)
+const WPW_TEAM: Record<string, { name: string; email: string; role: string; phone?: string }> = {
+  bulk:    { name: 'Jackson', email: 'jackson@weprintwraps.com', role: 'Bulk/Fleet Sales',    phone: '+14807726003' },
+  design:  { name: 'Grant',   email: 'grant@weprintwraps.com',   role: 'Design Services' },
+  quality: { name: 'Trish',   email: 'trish@weprintwraps.com',   role: 'Quality/Escalations', phone: '+16233135418' },
+  support: { name: 'Lance',   email: 'lance@weprintwraps.com',   role: 'Customer Support' },
+};
+const SILENT_CC = 'trish@weprintwraps.com';
+
+// Rough sqft by vehicle class — used ONLY when the sqft database has no exact
+// match, so the Wrap Guru can still give a ballpark instead of stalling.
+function estimateSqftByClass(make: string, model: string): number {
+  const s = `${make || ''} ${model || ''}`.toLowerCase();
+  if (/\b(sprinter|transit|promaster|express|savana|nv\s?\d|cargo van|box truck|step van)\b/.test(s)) return 320; // full-size/commercial van
+  if (/\b(f-?250|f-?350|f-?450|silverado\s?2500|silverado\s?3500|sierra\s?2500|ram\s?2500|ram\s?3500|super\s?duty|hd)\b/.test(s)) return 300; // HD truck
+  if (/\b(f-?150|silverado|sierra|ram|tundra|titan|ridgeline|colorado|canyon|tacoma|ranger|frontier|pickup|truck)\b/.test(s)) return 280; // pickup
+  if (/\b(suburban|tahoe|yukon|expedition|sequoia|armada|escalade|navigator|traverse|pilot|highlander|telluride|palisade|durango|4runner)\b/.test(s)) return 285; // large SUV
+  if (/\b(blazer|equinox|rav4|cr-?v|cx-?5|rogue|explorer|edge|escape|cherokee|wrangler|bronco|forester|outback|santa\s?fe|sorento|suv|crossover)\b/.test(s)) return 265; // mid SUV
+  if (/\b(minivan|odyssey|sienna|pacifica|carnival|caravan|van)\b/.test(s)) return 300; // minivan
+  if (/\b(coupe|mustang|camaro|challenger|corvette|miata|brz|gr86|two.?door)\b/.test(s)) return 210; // coupe
+  return 240; // default: mid-size car/sedan
+}
+
+// Volume discount tiers by total sqft
+function bulkDiscount(sqft: number): number {
+  if (sqft >= 2500) return 0.20;
+  if (sqft >= 1500) return 0.15;
+  if (sqft >= 1000) return 0.10;
+  if (sqft >= 500)  return 0.05;
+  return 0;
+}
+
+// Standard WooCommerce add-to-cart URL (works on any Woo store — no REST call needed)
+function cartUrl(productId: number, qty = 1): string {
+  const q = Math.max(1, Math.round(qty || 1));
+  return `https://weprintwraps.com/cart/?add-to-cart=${productId}${q > 1 ? `&quantity=${q}` : ''}`;
+}
+
+const KNOWLEDGE: Record<string, string> = {
+  pricing: 'Avery MPI 1105 and 3M IJ180 printed wraps are both $5.27/sqft. Contour-cut: Avery $6.32/sqft, 3M $6.92/sqft. Window perf $5.95/sqft. Wall wrap $3.25/sqft. Wrap-by-the-yard patterns $95.50/yard. Custom design $975, design setup/file output $199, hourly design $90/hr. Free shipping on orders $750+. Volume discounts start at 500 sqft (5%) up to 2500+ sqft (20%).',
+  products: 'We print full vehicle wraps (Avery/3M), contour-cut graphics/decals/labels, perforated window vinyl, wall wraps, pre-designed wrap-by-the-yard patterns, and custom design. Print & ship only — no installation.',
+  shipping: 'Orders ship in 1-2 business days. Free shipping on orders $750+. Add to cart and enter your zip for an instant shipping price.',
+  turnaround: 'Print production is 1-2 business days, then it ships.',
+  file_upload: 'Upload artwork at checkout or email hello@weprintwraps.com for a free print-readiness review. Send PDF/AI/EPS at full scale.',
+  design_services: 'No artwork? Custom vehicle wrap design is $975; design setup/file output is $199; hourly design work is $90/hr. Email design@weprintwraps.com.',
+  guarantee: 'We print on genuine 3M and Avery media with UV inks, made in the USA.',
+  contact: 'hello@weprintwraps.com for general questions, design@weprintwraps.com for design.',
+  installation: 'We are print & ship ONLY — we do not install. We can point you to install resources.',
+  restyleproai: 'RestyleProAI is our AI wrap-visualization tool — upload a photo of your vehicle and preview wrap designs/colors before you buy. Ask us for a link if you want to try it.',
+};
 
 async function sendOperatorSMS(body: string): Promise<void> {
   const sid = Deno.env.get('TWILIO_ACCOUNT_SID');
@@ -56,10 +139,10 @@ const TOOLS = [
   {
     name: "cmd_pricing",
     description: `Calculate price for any WPW product. Products:
-VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.32), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
+VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.95), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
-DESIGN (flat): custom_design ($750), design_hour ($95), file_output ($95)
+DESIGN (flat): custom_design ($975), design_hour ($90/hr), file_output ($199)
 SAMPLES (flat): pantone ($42), camo_sample, marble_sample, wicked_sample ($26.50 each)
 PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xlarge ($899)`,
     input_schema: {
@@ -77,8 +160,21 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   },
   {
     name: "cmd_quote",
-    description: "Create quote and send email. Use ONLY after: name + email + phone + vehicle/product + price are ALL confirmed.",
-    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_name", "customer_email", "vehicle", "sqft", "price"] }
+    description: "Save the quote AND email it to the customer. This also enrolls them in follow-up/retargeting. Call this the MOMENT you have their email + the vehicle/price — do NOT wait for name or phone (those are optional and the backend fills a default). We ALWAYS email a quote once we have an email.",
+    input_schema: { type: "object", properties: { customer_name: { type: "string" }, customer_email: { type: "string" }, customer_phone: { type: "string" }, vehicle: { type: "string" }, sqft: { type: "number" }, price: { type: "number" }, product_name: { type: "string" } }, required: ["customer_email", "vehicle", "sqft", "price"] }
+  },
+  {
+    name: "cmd_cart",
+    description: `Generate a WooCommerce add-to-cart link so the customer can buy now. Use after you've given a price and the customer is ready to order (or asks "where do I buy / add to cart / checkout").
+product keys: avery_wrap, 3m_wrap, cut_avery, cut_3m, window_perf, wall_wrap, camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy, custom_design, design_output. Default: avery_wrap.
+quantity = sqft for per-sqft products, yards for by-the-yard, units for flat items.`,
+    input_schema: { type: "object", properties: { product: { type: "string", description: "Product key from the list" }, quantity: { type: "number", description: "Qty (sqft/yards/units). Default 1." } }, required: [] }
+  },
+  {
+    name: "cmd_fix",
+    description: `Offer/create a PAID file fix through ShopFlow. Use AFTER a "Check my file" run flags an issue and the customer wants us to fix it. Returns a secure Stripe checkout link. Pull this lever instead of just telling them to email us.
+fix_key options: upscale = "Print-Ready Prep" (low-res/DPI, automatic 4× upscale, $199), cutpath ($199), recreate (AI design from a reference, $199), production_pack ($299). Omit fix_key to let ShopFlow pick from the detected issues.`,
+    input_schema: { type: "object", properties: { fix_key: { type: "string", description: "upscale | cutpath | recreate | production_pack. Optional." } }, required: [] }
   },
   {
     name: "cmd_order",
@@ -116,7 +212,7 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   }
 ];
 
-async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string }): Promise<any> {
+async function execTool(name: string, input: any, baseUrl: string, key: string, context?: { email?: string; product_key?: string; session_id?: string }): Promise<any> {
   // Handle cmd_update_contact locally (updates command_contacts)
   if (name === 'cmd_update_contact') {
     console.log(`[CommandChat] Updating contact:`, JSON.stringify(input));
@@ -145,19 +241,238 @@ async function execTool(name: string, input: any, baseUrl: string, key: string, 
     return { success: true, message: 'Contact info noted' };
   }
 
-  // cmd_quote -> create-quote-from-chat ("Wren"): the real WPW quote tool.
-  // It saves the quote with the correct schema, emails the customer (Resend),
-  // and logs to ai_actions. We pass the structured vehicle the agent looked up.
-  const map: Record<string, string> = { cmd_knowledge: 'cmd-knowledge', cmd_vehicle: 'cmd-vehicle', cmd_pricing: 'cmd-pricing', cmd_quote: 'create-quote-from-chat', cmd_synopsis: 'cmd-synopsis', cmd_order: 'cmd-order', cmd_escalate: 'cmd-escalate' };
-  console.log(`[CommandChat] Calling ${name}:`, JSON.stringify(input));
-  const res = await fetch(`${baseUrl}/functions/v1/${map[name]}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify(input)
-  });
-  const result = await res.json();
-  console.log(`[CommandChat] ${name} result:`, JSON.stringify(result));
-  return result;
+  console.log(`[Ace] Tool ${name}:`, JSON.stringify(input));
+
+  // cmd_knowledge — inline knowledge base (was a missing micro-function)
+  if (name === 'cmd_knowledge') {
+    const topic = String(input.topic || '').toLowerCase().replace(/[^a-z_]/g, '_');
+    const info = KNOWLEDGE[topic] || KNOWLEDGE[topic.replace(/_/g, '')] || Object.values(KNOWLEDGE).join(' ');
+    return { topic, info };
+  }
+
+  // cmd_vehicle — call the REAL vehicle-sqft function (this one is deployed)
+  if (name === 'cmd_vehicle') {
+    try {
+      const r = await fetch(`${baseUrl}/functions/v1/vehicle-sqft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ year: input.year, make: input.make, model: input.model }),
+      });
+      const v = await r.json();
+      let sqft = typeof v.sqft === 'number' ? v.sqft : null;
+      let isEstimate = false;
+      // No exact DB match -> fall back to a class-based estimate so we can still quote.
+      if (sqft === null) {
+        sqft = estimateSqftByClass(input.make, input.model);
+        isEstimate = true;
+      }
+      const roof = (!isEstimate && v.panels?.roof) ? v.panels.roof : Math.round(sqft * 0.10);
+      return {
+        vehicle: `${input.year || ''} ${input.make || ''} ${input.model || ''}`.replace(/\s+/g, ' ').trim(),
+        sqft,
+        roof,
+        sqft_with_roof: sqft + roof,
+        is_estimate: isEstimate,
+        needs_review: !!v.needs_review || isEstimate,
+      };
+    } catch (e) {
+      console.error('[Ace] vehicle-sqft failed:', e);
+      // Even on failure, return a safe default so the chat never dead-ends.
+      const sqft = estimateSqftByClass(input.make, input.model);
+      return { vehicle: `${input.make || ''} ${input.model || ''}`.trim(), sqft, roof: Math.round(sqft * 0.10), sqft_with_roof: sqft + Math.round(sqft * 0.10), is_estimate: true, needs_review: true };
+    }
+  }
+
+  // cmd_pricing — inline calculation from the catalog (was a missing micro-function)
+  if (name === 'cmd_pricing') {
+    const pk = String(input.product || 'avery_wrap');
+    const p = WPW_PRODUCTS[pk] || WPW_PRODUCTS['avery_wrap'];
+    let prices: any = { rate: p.price };
+    if (p.type === 'per_sqft') {
+      const sqft = Number(input.sqft) || 0;
+      const sqftRoof = Number(input.sqft_with_roof) || sqft;
+      const totalSqft = Math.max(sqft, sqftRoof) * (Number(input.vehicle_count) || 1);
+      const disc = bulkDiscount(totalSqft);
+      prices = {
+        rate: p.price,
+        default: Math.round(sqft * p.price * (1 - disc) * 100) / 100,
+        with_roof: Math.round(sqftRoof * p.price * (1 - disc) * 100) / 100,
+        discount_pct: Math.round(disc * 100),
+      };
+    } else if (p.type === 'per_yard') {
+      const yards = Number(input.yards) || 1;
+      prices = { rate: p.price, default: Math.round(yards * p.price * 100) / 100 };
+    } else {
+      prices = { rate: p.price, default: p.price };
+    }
+    return { product: p.name, product_key: pk, url: p.url, cart_url: cartUrl(p.id), prices };
+  }
+
+  // cmd_cart — build a working WooCommerce add-to-cart link
+  if (name === 'cmd_cart') {
+    const pk = String(input.product || context?.product_key || 'avery_wrap');
+    const p = WPW_PRODUCTS[pk] || WPW_PRODUCTS['avery_wrap'];
+    const qty = Number(input.quantity) || 1;
+    return { product: p.name, product_key: pk, cart_url: cartUrl(p.id, qty), product_url: p.url };
+  }
+
+  // cmd_order — look up a WooCommerce order (was a missing micro-function)
+  if (name === 'cmd_order') {
+    const num = String(input.order_number || '').replace(/\D/g, '');
+    if (!num) return { found: false, message: 'No order number provided' };
+    try {
+      const rows = await dbQuery(baseUrl, key, 'shopflow_orders',
+        `select=order_number,status,customer_name,tracking_number,tracking_url&order_number=eq.${num}&limit=1`);
+      if (Array.isArray(rows) && rows.length) {
+        const o = rows[0];
+        return { found: true, order_number: o.order_number, status: o.status, tracking_number: o.tracking_number || null, tracking_url: o.tracking_url || null };
+      }
+      return { found: false, message: `Order #${num} not found in our system yet` };
+    } catch (e) {
+      console.error('[Ace] order lookup failed:', e);
+      return { found: false, message: 'Order lookup unavailable right now' };
+    }
+  }
+
+  // cmd_synopsis — inline one-liner for the admin inbox (was a missing micro-function)
+  if (name === 'cmd_synopsis') {
+    const bits: string[] = [];
+    if (input.vehicle) bits.push(String(input.vehicle));
+    if (input.sqft) bits.push(`${input.sqft} sqft`);
+    if (input.price) bits.push(`$${input.price}`);
+    if (input.email_captured) bits.push('email captured');
+    const synopsis = bits.length ? bits.join(' • ') : String(input.message || '').substring(0, 90);
+    return { synopsis };
+  }
+
+  // cmd_escalate — forward the problem ticket to the right manager via forward-to-team
+  if (name === 'cmd_escalate') {
+    const type = String(input.escalation_type || 'support');
+    const member = WPW_TEAM[type] || WPW_TEAM.support;
+    // In test mode, every escalation goes to the tester's inbox (no team CC).
+    const routeTo = ESCALATION_TEST_OVERRIDE || member.email;
+    const routeCc = ESCALATION_TEST_OVERRIDE ? undefined : SILENT_CC;
+    try {
+      const r = await fetch(`${baseUrl}/functions/v1/forward-to-team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({
+          conversation_id: input.conversation_id,
+          organization_id: ORG_ID,
+          to_email: routeTo,
+          cc_email: routeCc,
+          subject: `[Wrap Guru • WPW] ${type.toUpperCase()} — ${input.customer_name || 'Website visitor'}`,
+          reason: input.reason || `${type} escalation from website chat`,
+          context: `Escalation type: ${type} → route to ${member.name} (${member.role})\n` +
+            `Customer: ${input.customer_name || 'unknown'} | ${input.customer_email || 'no email'} | ${input.customer_phone || 'no phone'}\n` +
+            `Vehicle: ${input.vehicle || 'n/a'}\n` +
+            `Reason: ${input.reason || 'n/a'}`,
+          sender_name: input.customer_name || 'Website visitor',
+          sender_email: input.customer_email || null,
+          original_message: input.trigger_message || input.reason || '',
+        }),
+      });
+      const res = await r.json();
+      const ok = r.ok && !res.error;
+      return { success: ok, escalation_type: type, routed_to: routeTo, team_member: member.name, test_mode: !!ESCALATION_TEST_OVERRIDE };
+    } catch (e) {
+      console.error('[Ace] escalate/forward-to-team failed:', e);
+      return { success: false, escalation_type: type, error: 'escalation failed' };
+    }
+  }
+
+  // cmd_quote -> create-quote-from-chat: the real WPW quote tool.
+  // It saves the quote with the correct schema, emails the customer (Resend), and logs to ai_actions.
+  if (name === 'cmd_quote') {
+    const res = await fetch(`${baseUrl}/functions/v1/create-quote-from-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify(input),
+    });
+    const result = await res.json();
+    console.log(`[Ace] cmd_quote result:`, JSON.stringify(result));
+    return result;
+  }
+
+  // cmd_fix — pay-then-process file fix via RestylePro's shopflow-bridge.
+  // Finds the customer's most recent "Check my file" result for this session,
+  // creates a job on the bridge (which owns Stripe + processing), and hands
+  // back the checkout link. Delivery of the finished file happens via the
+  // bridge's callback to wrapguru-shopflow?action=callback.
+  if (name === 'cmd_fix') {
+    const SHOPFLOW_BRIDGE = 'https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/shopflow-bridge';
+    const SERVICE_LABEL: Record<string, string> = {
+      upscale: 'Print-Ready Prep (4×)', cutpath: 'Cut-Path / Contour Setup',
+      recreate: 'AI Design Recreate', production_pack: 'Production Pack',
+    };
+    const sid = context?.session_id;
+    if (!sid) return { needs_file: true, message: 'Ask them to run "Check my file" first so I have their file.' };
+    const rows = await dbQuery(baseUrl, key, 'ai_actions',
+      `action_type=eq.artwork_review&action_payload->>session_id=eq.${encodeURIComponent(sid)}&select=action_payload&order=created_at.desc&limit=1`);
+    const art = Array.isArray(rows) && rows[0]?.action_payload ? rows[0].action_payload : null;
+    if (!art?.file_url) return { needs_file: true, message: 'I don\'t have a file on record yet — run "Check my file" and I\'ll set up the fix.' };
+
+    // Orchestration: the file check may have ALREADY pre-created the checkout.
+    // Reuse it (no duplicate job) unless the customer asked for a different fix.
+    const pre = art?.ai_precheck?.recommended_fix;
+    if (pre?.checkout_url && (!input.fix_key || String(input.fix_key).toLowerCase() === pre.service)) {
+      return {
+        success: true, service: pre.service, label: pre.label, price: pre.price, job_id: pre.job_id, pay_url: pre.checkout_url,
+        message: `${pre.label} is $${pre.price}. ${pre.reason || ''} Here's your secure checkout — once it's paid we process it and email you the finished file:\n${pre.checkout_url}`,
+      };
+    }
+    const email = art.customer_email || context?.email || null;
+    if (!email) return { needs_email: true, message: 'I need the customer\'s email before setting up the fix — ask for it, then try again.' };
+
+    // Map the chosen fix / detected issues -> bridge service name.
+    const issuesText = (art?.ai_precheck?.quick_issues || []).join(' ').toLowerCase();
+    const score = art?.ai_precheck?.preliminary_score ?? null;
+    let service = String(input.fix_key || '').toLowerCase();
+    // accept legacy keys / free text
+    if (service === 'print_prep') service = 'upscale';
+    if (service === 'cut_path') service = 'cutpath';
+    if (!['upscale', 'cutpath', 'recreate', 'production_pack'].includes(service)) {
+      if (/cut|contour|outline/.test(issuesText)) service = 'cutpath';
+      else if (/recreate|redesign|from.*reference/.test(issuesText)) service = 'recreate';
+      else service = 'upscale'; // low-res/dpi/raster/rgb or generic -> automatic upscale
+    }
+
+    const vehicleStr = art.vehicle_info
+      ? `${art.vehicle_info.year || ''} ${art.vehicle_info.make || ''} ${art.vehicle_info.model || ''}`.trim()
+      : '';
+
+    const r = await fetch(SHOPFLOW_BRIDGE, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create', service,
+        file_url: art.file_url, email,
+        vehicle: vehicleStr || undefined,
+        notes: `WrapGuru chat • score ${score ?? '?'}/10 • ${art.file_name || ''}`,
+        callback_url: `${baseUrl}/functions/v1/wrapguru-shopflow?action=callback`,
+        return_url: 'https://weprintwraps.com/?shopflow=success',
+      }),
+    });
+    const rj = await r.json().catch(() => ({}));
+    if (!rj.ok || !rj.checkout_url) return { success: false, error: rj.error || 'shopflow_create_failed', message: 'I couldn\'t set up that fix just now — I\'ll have our team follow up by email.' };
+
+    // Store the delivery mapping so the bridge callback can email the customer.
+    await dbInsert(baseUrl, key, 'ai_actions', {
+      action_type: 'shopflow_job', organization_id: ORG_ID, priority: 'high', resolved: false,
+      action_payload: {
+        job_id: rj.job_id, service, price: rj.price, status: 'pending_payment',
+        customer_email: email, customer_name: art.customer_name || null,
+        file_name: art.file_name || null, file_url: art.file_url, session_id: sid,
+      },
+    });
+
+    const label = SERVICE_LABEL[service] || 'file fix';
+    return {
+      success: true, service, label, price: rj.price, job_id: rj.job_id, pay_url: rj.checkout_url,
+      message: `${label} is $${rj.price}. Here's your secure checkout — once it's paid we process it${service === 'upscale' ? ' automatically' : ''} and email you the finished file:\n${rj.checkout_url}`,
+    };
+  }
+
+  return { error: `Unknown tool ${name}` };
 }
 
 async function dbQuery(url: string, key: string, table: string, query: string): Promise<any> {
@@ -189,7 +504,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { session_id, message_text, customer_name, customer_email, customer_phone, geo, page_url } = body;
+    const { session_id, message_text, customer_name, customer_email, customer_phone, geo, page_url, debug } = body;
 
     console.log('[CommandChat] Received:', { session_id, message_text: message_text?.substring(0, 50), customer_name, customer_email, geo: geo?.city });
 
@@ -199,7 +514,7 @@ serve(async (req) => {
 
     const url = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!;
     const key = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const aiKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+    const aiKey = Deno.env.get('OPENAI_API_KEY')!;
 
     // Get or create conversation
     let convId: string;
@@ -357,14 +672,16 @@ serve(async (req) => {
     }
 
     // CONVERSION-FOCUSED PROMPT: Solve problems, guide to purchase naturally
-    const prompt = `You are a member of the WePrintWraps team (weprintwraps.com) — we are a PRINT SHOP ONLY (no installation).
+    const prompt = `You are the Wrap Guru, the WePrintWraps wrap concierge (weprintwraps.com), powered by WrapCommandAI. WePrintWraps is a PRINT SHOP ONLY (no installation).
 
 YOUR MISSION: Solve their problem and guide them to buy. Be genuinely helpful — the sale follows naturally.
 
 IDENTITY:
-- You're a real WePrintWraps team member helping over chat. Speak as "we"/"us" (the WPW team).
-- Do NOT use a personal name or claim to be a specific person. If asked your name, say you're part of the WePrintWraps team.
-- Never say you're an AI, a bot, or an assistant.
+- Your name is the Wrap Guru. Greet people as the Wrap Guru ("Hey, I'm the Wrap Guru with WePrintWraps").
+- You work with the WePrintWraps team — speak as "we"/"us" for the shop, and "I" as the Wrap Guru.
+- If asked what you are: you're the Wrap Guru, WePrintWraps' 24/7 wrap assistant, powered by WrapCommandAI. Keep it warm and human, never robotic.
+- Do NOT bring up or name other apps, brands, or platforms (e.g. RestyleProAI) — WrapGuru is the only assistant the customer needs to know about.
+- Don't over-explain what you are — just help.
 
 VOICE RULES (STRICT):
 - Casual and short, like texting a coworker
@@ -385,13 +702,13 @@ CUSTOMER STATE:
 - Quote: ${state.quoted_price ? '$' + state.quoted_price : 'Not given'}
 
 CONVERSION MINDSET:
-- Every answer should solve their problem AND include a way to buy
+- Every answer should solve their problem AND move toward the quote
 - Don't just answer questions — guide them to the next step
-- After pricing, make it easy: "Ready to order? Here's the link..."
+- After pricing, the next step is ALWAYS: get their email and send the quote (cmd_quote). Then offer a cart link.
 - Create urgency naturally: "Ships in 1-2 days" / "Free shipping on $750+"
 - Remove friction: answer objections before they ask
 
-PRODUCT URLS (always include the relevant one):
+PRODUCT URLS — REFERENCE ONLY (for spec/info questions; these are product pages, NOT buy links. To let someone buy, use cmd_cart. Do not paste these as the way to order):
 
 FULL WRAPS:
 - Avery printed wrap: https://weprintwraps.com/our-products/avery-1105egrs-with-doz13607-lamination/
@@ -434,23 +751,41 @@ VEHICLE RULE (CRITICAL):
 - Do NOT switch to a different vehicle unless the customer explicitly asks about a new one
 - If the customer mentions a new vehicle, use cmd_vehicle to look it up and update
 
-PRICING FLOW:
-1. Customer mentions vehicle -> use cmd_vehicle to get sqft
-2. After getting sqft -> use cmd_pricing to calculate
-3. Give price + relevant order URL in same message
-4. After name + email + phone + vehicle + price confirmed -> use cmd_quote to save and send email
+PRICING & QUOTE FLOW (follow this order every time):
+1. Customer mentions vehicle -> use cmd_vehicle to get sqft (it ALWAYS returns one).
+2. Give the price right there in chat: state sqft, whether the roof is included, the $/sqft, and the total for Avery and 3M. Do NOT paste a product-page link as "the quote."
+3. Ask for their email so you can send the full written quote: "What's the best email? I'll send your full quote over." WE ALWAYS EMAIL THE QUOTE.
+4. The MOMENT you have their email, call cmd_quote. That single call saves the quote for our team follow-up/retargeting AND emails it to them (the email already includes a real add-to-cart link). Do not wait for name or phone.
+5. After the quote is emailed, ASK if they'd also like a direct add-to-cart link to order now: "Want me to drop you an add-to-cart link so you can order right now?" Only if they say yes, call cmd_cart and paste the real link it returns.
 
-CONTACT COLLECTION (GET ALL 4):
-- If name is NOT PROVIDED, ask for it naturally
-- If email is NOT PROVIDED, ask for it
-- If phone is "Not provided", ask: "What's the best number to reach you?"
-- Get all 3 before sending the quote
-- AFTER quote sent, ask: "By the way, what's your shop name?" (if not already known)
-- Shop name helps us serve wrap shops better and offer trade pricing
+ALWAYS QUOTE — NEVER STALL:
+- cmd_vehicle ALWAYS returns a sqft (if the exact model isn't in our database it returns a close class-based estimate with is_estimate=true). So you can ALWAYS give a price. Do it.
+- If is_estimate is true, give the ballpark price and add one short line like: "that's a close estimate — we'll confirm exact square footage before we print." Then keep moving toward the emailed quote.
+- NEVER reply that you "need more info on the square footage" or "need a review step." That's our job on the backend, not the customer's. Give the number.
+
+CART LINK RULE:
+- A product-page URL (weprintwraps.com/our-products/...) is NOT a cart link and is NOT how someone buys. Never hand a product page out as the way to order.
+- The ONLY buy link is the one cmd_cart returns (weprintwraps.com/cart/?add-to-cart=...). Only share it AFTER you've asked and they said yes, or if they explicitly ask to buy / add to cart / checkout.
+
+DESIGN HELP ("I need a design"):
+- If a customer needs artwork/a design created (not just a quote), gather the basics conversationally: vehicle, the look/goal they want, and any brand colors or logo.
+- Then route it to our design team with cmd_escalate (escalation_type "design") and confirm warmly: "Got it — I've sent this to our design team and they'll follow up by email to get started." Keep helping in the meantime.
+- We offer custom wrap design ($975), design setup/file output ($199), and hourly design ($90/hr) — mention these if they ask about cost. Do NOT pitch any other product, brand, or app by name; WrapGuru is the only assistant the customer needs to know about.
+
+FILE FIXES (ShopFlow — you can actually fix their file, not just advise):
+- After a "Check my file" run flags a problem (low score, low-res/upscale needed, needs a cut path, or they want a design recreated), DON'T just tell them to email us. Offer to fix it and pull the lever with cmd_fix.
+- cmd_fix returns a secure checkout link + price. Give them the link plainly. For an upscale it's processed AUTOMATICALLY after payment; the others our team finishes fast. Either way we email them the finished file.
+- Services: upscale = "Print-Ready Prep" ($199, automatic 4× print-ready upscale), cutpath ($199), recreate a design ($199), production_pack ($299). If unsure which, call cmd_fix with no fix_key and we'll pick based on what the file check found (low-res/DPI → upscale). Always state the price from the tool result, not from memory.
+- We need their email and a file on record from a "Check my file" run before setting up a fix. If either is missing, get it first.
+
+CONTACT COLLECTION:
+- EMAIL is the only thing required to send a quote — get it, then immediately call cmd_quote. Never hold the emailed quote hostage for a name or phone number.
+- Ask for name naturally if you don't have it, but do it alongside or after the quote — not as a blocker.
+- AFTER the quote is emailed, you can ask for phone ("What's the best number to reach you?") and shop name ("By the way, what's your shop name?" — helps us offer trade pricing). Nice-to-haves, not gates.
 
 PRICING RULES:
 - Avery and 3M wraps are BOTH $5.27/sqft (same price)
-- Window perf: $5.32/sqft
+- Window perf: $5.95/sqft
 - Cut contour Avery: $6.32/sqft, 3M: $6.92/sqft
 - Always state sqft and whether roof is included or excluded
 - Free shipping on orders $750+
@@ -473,102 +808,126 @@ Contact: hello@weprintwraps.com`;
 
     let reply = "Hey! How can I help?";
     let escalatedThisTurn: string | null = null;
-    let res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: msgs })
-    });
+    let aiError: any = null;
 
-    let ai = await res.json();
-    if (!res.ok || ai.type === 'error') {
-      console.error('[CommandChat] Anthropic API error:', res.status, JSON.stringify(ai));
+    // OpenAI Chat Completions with function calling. Convert our tool defs to
+    // OpenAI's schema, and put the system prompt as the first message.
+    const oaTools = TOOLS.map((t: any) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    const oaMessages: any[] = [{ role: 'system', content: prompt }, ...msgs];
+
+    async function callOpenAI(messages: any[]): Promise<{ r: Response; j: any }> {
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${aiKey}`, 'Content-Type': 'application/json' },
+        // Low temperature: at the default (1.0) gpt-4o was inconsistent about
+        // calling cmd_vehicle — it would sometimes stall and ask for square
+        // footage instead of quoting. 0.2 makes tool-calling reliable so it
+        // ALWAYS quotes a known/estimated vehicle.
+        body: JSON.stringify({ model: MODEL, max_tokens: 1024, temperature: 0.2, messages, tools: oaTools, tool_choice: 'auto' })
+      });
+      const j = await r.json();
+      return { r, j };
     }
 
-    // Tool execution loop
-    while (ai.stop_reason === 'tool_use') {
-      const calls = ai.content.filter((b: any) => b.type === 'tool_use');
-      const results: any[] = [];
+    let { r: res, j: ai } = await callOpenAI(oaMessages);
+    if (!res.ok || ai.error) {
+      aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai };
+      console.error('[Ace] OpenAI API error:', res.status, JSON.stringify(ai));
+    }
+    let assistantMsg = ai.choices?.[0]?.message;
 
-      for (const c of calls) {
-        // FIX: Pass all customer info to cmd_quote
-        if (c.name === 'cmd_quote') {
-          c.input.conversation_id = convId;
-          // Ensure we pass stored customer info if not in the call
-          if (!c.input.customer_name && state.customer_name) c.input.customer_name = state.customer_name;
-          if (!c.input.customer_email && state.customer_email) c.input.customer_email = state.customer_email;
-          if (!c.input.customer_phone && state.customer_phone) c.input.customer_phone = state.customer_phone;
-          if (!c.input.vehicle && state.vehicle) c.input.vehicle = state.vehicle;
-          if (!c.input.sqft && state.sqft) c.input.sqft = state.sqft;
-          // Structured vehicle for the homepage quote tool (submit-quote)
-          if (state.vehicle_year) c.input.vehicle_year = state.vehicle_year;
-          if (state.vehicle_make) c.input.vehicle_make = state.vehicle_make;
-          if (state.vehicle_model) c.input.vehicle_model = state.vehicle_model;
+    // Tool execution loop (OpenAI tool_calls). Guard against runaway loops.
+    let guard = 0;
+    while (assistantMsg?.tool_calls?.length && guard < 6) {
+      guard++;
+      // Append the assistant turn that requested the tools (required by OpenAI before tool results).
+      oaMessages.push(assistantMsg);
+
+      for (const call of assistantMsg.tool_calls) {
+        const fnName = call.function?.name;
+        let input: any = {};
+        try { input = JSON.parse(call.function?.arguments || '{}'); } catch (_e) { input = {}; }
+
+        // Pass all customer info to cmd_quote
+        if (fnName === 'cmd_quote') {
+          input.conversation_id = convId;
+          if (!input.customer_name && state.customer_name) input.customer_name = state.customer_name;
+          if (!input.customer_email && state.customer_email) input.customer_email = state.customer_email;
+          if (!input.customer_phone && state.customer_phone) input.customer_phone = state.customer_phone;
+          if (!input.vehicle && state.vehicle) input.vehicle = state.vehicle;
+          if (!input.sqft && state.sqft) input.sqft = state.sqft;
+          if (state.vehicle_year) input.vehicle_year = state.vehicle_year;
+          if (state.vehicle_make) input.vehicle_make = state.vehicle_make;
+          if (state.vehicle_model) input.vehicle_model = state.vehicle_model;
         }
 
         // Pass customer info to escalation
-        if (c.name === 'cmd_escalate') {
-          c.input.conversation_id = convId;
-          c.input.customer_name = state.customer_name || null;
-          c.input.customer_email = state.customer_email || null;
-          c.input.customer_phone = state.customer_phone || null;
-          c.input.vehicle = state.vehicle || null;
-          c.input.trigger_message = message_text;
+        if (fnName === 'cmd_escalate') {
+          input.conversation_id = convId;
+          input.customer_name = state.customer_name || null;
+          input.customer_email = state.customer_email || null;
+          input.customer_phone = state.customer_phone || null;
+          input.vehicle = state.vehicle || null;
+          input.trigger_message = message_text;
         }
 
-        const r = await execTool(c.name, c.input, url, key, { email: state.customer_email });
+        const r = await execTool(fnName, input, url, key, { email: state.customer_email, product_key: state.product_key, session_id });
 
         // Update state from tool results
-        if (c.name === 'cmd_update_contact' && r.success && c.input.shop_name) {
-          state.shop_name = c.input.shop_name;
+        if (fnName === 'cmd_update_contact' && r.success && input.shop_name) {
+          state.shop_name = input.shop_name;
         }
-        if (c.name === 'cmd_vehicle' && r.sqft) {
+        if (fnName === 'cmd_vehicle' && r.sqft) {
           state.vehicle = r.vehicle;
           state.sqft = r.sqft;
           state.sqftWithRoof = r.sqft_with_roof;
           state.roof = r.roof;
-          // Keep the structured make/model/year so the homepage quote tool can re-price authoritatively
-          if (c.input.year) state.vehicle_year = c.input.year;
-          if (c.input.make) state.vehicle_make = c.input.make;
-          if (c.input.model) state.vehicle_model = c.input.model;
+          if (input.year) state.vehicle_year = input.year;
+          if (input.make) state.vehicle_make = input.make;
+          if (input.model) state.vehicle_model = input.model;
         }
-        if (c.name === 'cmd_pricing' && r.prices) {
+        if (fnName === 'cmd_pricing' && r.prices) {
           state.calculated_price = r.prices.default;
           state.calculated_price_with_roof = r.prices.with_roof;
+          if (r.product_key) state.product_key = r.product_key;
+          if (r.cart_url) state.cart_url = r.cart_url;
         }
-        if (c.name === 'cmd_quote' && r.success) {
+        if (fnName === 'cmd_cart' && r.cart_url) {
+          state.cart_url = r.cart_url;
+          if (r.product_key) state.product_key = r.product_key;
+        }
+        if (fnName === 'cmd_quote' && r.success) {
           state.quote_sent = true;
           state.quoted_price = r.price;
           state.quote_number = r.quote_number;
         }
-        if (c.name === 'cmd_escalate' && r.success) {
+        if (fnName === 'cmd_escalate' && r.success) {
           if (!state.escalations_sent) state.escalations_sent = [];
           state.escalations_sent.push(r.escalation_type);
           state.last_escalation = r.escalation_type;
-          escalatedThisTurn = r.escalation_type || c.input.escalation_type;
-          console.log('[CommandChat] Escalated to:', r.routed_to);
+          escalatedThisTurn = r.escalation_type || input.escalation_type;
+          console.log('[Ace] Escalated to:', r.routed_to);
         }
 
-        results.push({ type: 'tool_result', tool_use_id: c.id, content: JSON.stringify(r) });
+        // Feed the tool result back to the model
+        oaMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(r) });
       }
 
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'x-api-key': aiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, max_tokens: 1024, system: prompt, tools: TOOLS, messages: [...msgs, { role: 'assistant', content: ai.content }, { role: 'user', content: results }] })
-      });
-      ai = await res.json();
-      if (!res.ok || ai.type === 'error') {
-        console.error('[CommandChat] Anthropic API error (tool loop):', res.status, JSON.stringify(ai));
+      ({ r: res, j: ai } = await callOpenAI(oaMessages));
+      if (!res.ok || ai.error) {
+        aiError = { status: res.status, model: MODEL, key_present: !!aiKey, error: ai?.error || ai, phase: 'tool_loop' };
+        console.error('[Ace] OpenAI API error (tool loop):', res.status, JSON.stringify(ai));
         break;
       }
+      assistantMsg = ai.choices?.[0]?.message;
     }
 
-    const txt = ai.content?.find((b: any) => b.type === 'text');
-    if (txt && txt.text?.trim()) {
-      reply = txt.text;
+    const finalText = assistantMsg?.content;
+    if (typeof finalText === 'string' && finalText.trim()) {
+      reply = finalText;
     } else {
       // No text came back (usually an upstream API error) — give a helpful fallback, not silence
-      console.error('[CommandChat] No text in AI response, last stop_reason:', ai?.stop_reason, 'err:', ai?.error?.message);
+      console.error('[Ace] No text in AI response, finish_reason:', ai?.choices?.[0]?.finish_reason, 'err:', ai?.error?.message);
       reply = "Sorry, I hit a snag on my end — mind sending that again? Or email hello@weprintwraps.com and we'll jump right on it.";
     }
 
@@ -589,6 +948,43 @@ Contact: hello@weprintwraps.com`;
       console.log('[CommandChat] Synopsis generation failed:', e);
     }
 
+    // Forward captured lead/quote to RestylePro's pipeline (RestylePro owns the
+    // dashboard, orders, lead pipeline, and follow-ups). One list, not two.
+    // Deduped per (email + est_cost + quote#) so we don't repost the same lead.
+    if (state.customer_email) {
+      const est = state.calculated_price || state.quoted_price || null;
+      const sig = `${state.customer_email}|${est || ''}|${state.quote_number || ''}`;
+      if (state.last_lead_sig !== sig) {
+        try {
+          const RESTYLE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmYXBqZHl5dGh6eXZucGRlZ2h1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MzQzMDYsImV4cCI6MjA4NTIxMDMwNn0.OeFM3D0x-v8ie9KuVp1xfUKd2xv99ahtS4B6sC9SIyE';
+          await fetch('https://kfapjdyythzyvnpdeghu.supabase.co/functions/v1/wpw-calc-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': RESTYLE_ANON, 'Authorization': `Bearer ${RESTYLE_ANON}` },
+            body: JSON.stringify({
+              // Tenant key — RestylePro must route/save the lead by this org so a
+              // new tenant's leads never land in WPW's pipeline (SaaS, WPW = org #1).
+              organization_id: ORG_ID,
+              email: state.customer_email,
+              quote: {
+                vehicle: state.vehicle || null,
+                material: state.product_key || null,
+                total_sqft: state.sqftWithRoof || state.sqft || null,
+                est_cost: est,
+              },
+              intent: state.quote_sent ? 'quote_sent' : (est ? 'quote' : 'chat_lead'),
+              pagePath: page_url || null,
+              name: state.customer_name || null,
+              phone: state.customer_phone || null,
+            }),
+          });
+          state.last_lead_sig = sig;
+          console.log('[WrapGuru] Lead forwarded to RestylePro wpw-calc-lead:', state.customer_email);
+        } catch (leadErr) {
+          console.error('[WrapGuru] wpw-calc-lead push failed:', leadErr);
+        }
+      }
+    }
+
     // Save updated state with timestamp
     console.log('[CommandChat] Saving state:', JSON.stringify(state));
     await dbUpdate(url, key, 'conversations', `id=eq.${convId}`, {
@@ -601,14 +997,14 @@ Contact: hello@weprintwraps.com`;
       channel: 'website',
       direction: 'outbound',
       content: reply,
-      sender_name: 'WPW Team',
+      sender_name: 'Wrap Guru',
       created_at: replyTime
     });
 
     // The AI handles every chat. A human is only pinged when the customer explicitly
     // asks for a rep (the "Talk to a rep" button / rush jobs / real issues) -> cmd_escalate.
     try {
-      if (escalatedThisTurn) {
+      if (escalatedThisTurn && !ESCALATION_TEST_OVERRIDE) {
         const shortSession = String(session_id).substring(0, 6);
         await sendOperatorSMS(
           `WPW CHAT - REP REQUESTED [${shortSession}] (${escalatedThisTurn})\n` +
@@ -621,7 +1017,7 @@ Contact: hello@weprintwraps.com`;
       console.error('[CommandChat] Operator notify failed:', smsErr);
     }
 
-    return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId }), {
+    return new Response(JSON.stringify({ success: true, reply, response: reply, conversation_id: convId, ...(debug ? { ai_error: aiError } : {}) }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 

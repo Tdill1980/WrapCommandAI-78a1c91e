@@ -125,6 +125,33 @@ export default function ContentDrafts() {
     navigate(`/content-calendar?draft_id=${draft.id}`);
   };
 
+  // Hand the approved draft to the ACTUAL publisher: sync-draft-to-restylepro
+  // bridges it into restylepro's content-intake → content-deploy loop (the
+  // brand-aware Meta publisher with scheduling + retries). Without a
+  // scheduled_for date the post lands in the review queue as a draft; with
+  // one, content-deploy posts it when due.
+  const handleSendToPublisher = async (draft: ContentDraft) => {
+    setActionLoading(draft.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("sync-draft-to-restylepro", {
+        body: { content_draft_id: draft.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast.success(
+        draft.scheduled_for
+          ? "Sent to publisher — will post when scheduled"
+          : "Sent to publisher review queue",
+      );
+      fetchDrafts();
+    } catch (err) {
+      console.error("Error sending draft to publisher:", err);
+      toast.error(err instanceof Error ? err.message : "Failed to send to publisher");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const filteredDrafts = drafts.filter(d => {
     if (filter === "all") return true;
     if (filter === "pending") return d.status === "pending_review";
@@ -343,17 +370,32 @@ export default function ContentDrafts() {
                     )}
 
                     {draft.status === "approved" && (
-                      <Button
-                        size="sm"
-                        className="w-full gap-1"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSchedule(draft);
-                        }}
-                      >
-                        <Calendar className="w-3 h-3" />
-                        Schedule
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendToPublisher(draft);
+                          }}
+                          disabled={actionLoading === draft.id}
+                        >
+                          <Send className="w-3 h-3" />
+                          Send to Publisher
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSchedule(draft);
+                          }}
+                        >
+                          <Calendar className="w-3 h-3" />
+                          Schedule
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 </Card>

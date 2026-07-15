@@ -42,7 +42,7 @@ export async function finalizeRender(params: FinalizeRenderParams): Promise<Fina
     if (videoBlob) {
       fileToUpload = videoBlob;
     } else if (externalUrl) {
-      // For external URLs (from render services like Creatomate), 
+      // For external URLs (from the ffmpeg render worker), 
       // we can either download and re-upload, or just use the URL directly
       // For now, we'll use the external URL directly as the download URL
       finalUrl = externalUrl;

@@ -1,10 +1,10 @@
 project_id = "qxllysilzonrlyoaomce"
 
 [functions.ai-analyze-video-frame]
-verify_jwt = true
+verify_jwt = false
 
 [functions.backfill-video-visual-tags]
-verify_jwt = true
+verify_jwt = false
 
 [functions.render-grid-ad]
 verify_jwt = false
@@ -25,6 +25,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.convert-print]
+verify_jwt = false
+
+# Public so Stripe's browser redirect can hit ?action=fulfill without a JWT.
+[functions.wrapguru-shopflow]
 verify_jwt = false
 
 [functions.approveflow-event]
@@ -462,4 +466,25 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.media-bridge]
+verify_jwt = false
+
+[functions.create-meta-ad]
+verify_jwt = false
+
+[functions.create-canva-ad]
+verify_jwt = false
+
+[functions.create-viral-clip]
+verify_jwt = false
+
+[functions.ai-parse-content]
+verify_jwt = false
+
+[functions.backfill-content-tags]
+verify_jwt = false
+
+[functions.process-content-parse-queue]
+verify_jwt = false
+
+[functions.process-portfolio-content]
 verify_jwt = false

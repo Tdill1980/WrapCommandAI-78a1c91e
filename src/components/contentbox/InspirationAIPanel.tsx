@@ -136,21 +136,44 @@ export function InspirationAIPanel({
 
       setRenderingStatic(true);
       try {
-        const { data, error } = await lovableFunctions.functions.invoke("render-static-ad", {
+        // render-static-ad requires action:"start" and uses media_url/cta/aspect_ratio.
+        // Vertical platforms (tiktok/youtube) → 9:16, feed platforms → 4:5.
+        const aspect_ratio = platform === "tiktok" || platform === "youtube" ? "9:16" : "4:5";
+        const { data: startData, error: startError } = await lovableFunctions.functions.invoke("render-static-ad", {
           body: {
-            image_url: imageMedia.file_url,
+            action: "start",
+            media_url: imageMedia.file_url,
             headline: adPackage.hooks?.[0]?.text || "",
-            body_text: adPackage.caption || "",
-            cta_text: adPackage.cta_options?.[0] || "Learn More",
-            platform,
+            cta: adPackage.cta_options?.[0] || "Learn More",
+            aspect_ratio,
           }
         });
 
-        if (error) throw error;
-        
-        if (data?.url) {
-          setStaticOutputUrl(data.url);
+        if (startError) throw startError;
+        const renderId = startData?.render_id;
+        if (!renderId) throw new Error(startData?.error || "Render did not start");
+
+        // Poll for completion (Creatomate renders are async).
+        let finalUrl: string | null = null;
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const { data: statusData } = await lovableFunctions.functions.invoke("render-static-ad", {
+            body: { action: "status", render_id: renderId },
+          });
+          if (statusData?.status === "succeeded" && statusData?.url) {
+            finalUrl = statusData.url;
+            break;
+          }
+          if (statusData?.status === "failed") {
+            throw new Error(statusData?.error || "Render failed");
+          }
+        }
+
+        if (finalUrl) {
+          setStaticOutputUrl(finalUrl);
           toast.success("Static ad rendered!");
+        } else {
+          toast.error("Render timed out — try again");
         }
       } catch (err) {
         console.error("Static render error:", err);

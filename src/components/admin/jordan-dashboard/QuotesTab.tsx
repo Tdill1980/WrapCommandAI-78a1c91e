@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, RefreshCw, FileText, Clock, CheckCircle, XCircle, Zap, Mail, Eye } from "lucide-react";
 import { supabase, lovableFunctions } from "@/integrations/supabase/client";
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -39,6 +40,7 @@ interface Stats {
 }
 
 export function QuotesTab() {
+  const { organizationId } = useOrganization();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,11 +68,14 @@ export function QuotesTab() {
   const fetchQuotes = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from("quotes")
         .select("*")
         // Website Page Chat only (never include Instagram/email sourced quotes here)
-        .or("source.eq.website_chat,source.eq.website")
+        .or("source.eq.website_chat,source.eq.website");
+      // Tenant isolation (SaaS): only this org's quotes.
+      if (organizationId) q = q.eq("organization_id", organizationId);
+      const { data, error } = await q
         .order("created_at", { ascending: false })
         .limit(100);
 
@@ -99,7 +104,9 @@ export function QuotesTab() {
 
   useEffect(() => {
     fetchQuotes();
-  }, []);
+    // Re-fetch when the tenant org resolves so quotes are correctly scoped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId]);
 
   const toggleAutoRetarget = async (quoteId: string, currentValue: boolean) => {
     try {

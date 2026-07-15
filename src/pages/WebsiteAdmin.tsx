@@ -5,10 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { BarChart3, MessageSquare, FileText, Loader2, AlertTriangle, FileImage, ExternalLink } from "lucide-react";
+import { BarChart3, MessageSquare, FileText, Loader2, AlertTriangle, FileImage, ExternalLink, FileSearch } from "lucide-react";
 import { AnalyticsTab } from "@/components/admin/jordan-dashboard/AnalyticsTab";
 import { ChatSessionsTab } from "@/components/admin/jordan-dashboard/ChatSessionsTab";
 import { QuotesTab } from "@/components/admin/jordan-dashboard/QuotesTab";
+import { WrapGuruTab } from "@/components/admin/jordan-dashboard/WrapGuruTab";
 import { ArtworkReviewsPanel } from "@/components/admin/ArtworkReviewsPanel";
 import { MainLayout } from "@/layouts/MainLayout";
 import { Session } from "@supabase/supabase-js";
@@ -18,6 +19,7 @@ const TABS = [
   { id: "chats", label: "Website Chat", icon: MessageSquare, color: "bg-blue-500" },
   { id: "artwork", label: "Artwork Reviews", icon: FileImage, color: "bg-purple-500" },
   { id: "quotes", label: "Quotes", icon: FileText, color: "bg-indigo-500" },
+  { id: "wrapguru", label: "WrapGuru", icon: FileSearch, color: "bg-pink-500" },
   { id: "analytics", label: "Analytics", icon: BarChart3, color: "bg-green-500" },
 ];
 
@@ -206,6 +208,10 @@ export default function JordanLeeAdminDashboard() {
 
           <TabsContent value="quotes" className="mt-6">
             <QuotesTab />
+          </TabsContent>
+
+          <TabsContent value="wrapguru" className="mt-6">
+            <WrapGuruTab />
           </TabsContent>
 
           <TabsContent value="analytics" className="mt-6">

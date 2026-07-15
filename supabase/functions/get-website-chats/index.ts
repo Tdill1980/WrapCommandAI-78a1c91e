@@ -20,12 +20,14 @@ Deno.serve(async (req) => {
 
     // Parse request body for optional filters
     let channelFilter: string | null = null;
+    let orgFilter: string | null = null; // SaaS tenant isolation
     let limitCount = 200; // Increased default limit
 
     if (req.method === "POST") {
       try {
         const body = await req.json();
         channelFilter = body.channel || null; // null = all channels
+        orgFilter = body.organization_id || null; // null = all orgs (single-tenant fallback)
         limitCount = body.limit || 200;
       } catch {
         // No body or invalid JSON - use defaults
@@ -50,6 +52,10 @@ Deno.serve(async (req) => {
     // Only filter by channel if explicitly requested
     if (channelFilter) {
       query = query.eq("channel", channelFilter);
+    }
+    // Tenant isolation: only this org's conversations when an org is provided.
+    if (orgFilter) {
+      query = query.eq("organization_id", orgFilter);
     }
 
     const { data: conversations, error } = await query

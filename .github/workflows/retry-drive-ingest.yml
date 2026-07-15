@@ -1,0 +1,45 @@
+# Scheduled retry for Google-Drive-linked videos that hit Drive's temporary
+# "download quota" interstitial during the initial ingest. Each run clears the
+# drive_interstitial flag (so those rows re-enter the pool) and re-runs the
+# ingest-drive-media function a few times. As Drive's quota resets over hours,
+# the throttled files get re-hosted into Supabase storage. It's a cheap no-op
+# once none remain, and it never touches too_large files. Delete this workflow
+# once the library is fully ingested.
+name: Retry Drive Ingest (scheduled)
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch: {}
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clear interstitial flags and re-run ingest
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          REF=qxllysilzonrlyoaomce
+          FN="https://$REF.supabase.co/functions/v1/ingest-drive-media"
+
+          echo "=== clearing drive_interstitial flags ==="
+          SQL="update content_files set metadata = metadata - 'ingest_status' where file_type='video' and metadata->>'ingest_status' = 'drive_interstitial';"
+          curl -fsS -X POST \
+            "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg q "$SQL" '{query:$q}')"
+          echo
+
+          echo "=== running ingest loop ==="
+          for i in $(seq 1 15); do
+            R=$(curl -sS --max-time 170 -X POST "$FN" -H "Content-Type: application/json" -d '{"batch":2}')
+            echo "iter $i: $R"
+            REM=$(echo "$R" | jq -r '.remaining // "?"')
+            PROC=$(echo "$R" | jq -r '.processed // "?"')
+            if [ "$REM" = "0" ] || [ "$PROC" = "0" ]; then
+              echo "done (remaining=$REM processed=$PROC)"; break
+            fi
+          done

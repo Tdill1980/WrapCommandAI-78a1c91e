@@ -11,9 +11,9 @@ export default function ChatWidgetDemo() {
   const [widgetLoaded, setWidgetLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Production WPW widget hosted on Lovable Cloud file storage.
+  // Ace widget served from this app's own /embed path (updated on every deploy).
   // Install this snippet on weprintwraps.com (footer, before </body>).
-  const widgetScriptUrl = "https://wzwqhfbmymrengjqikjl.supabase.co/storage/v1/object/public/shopflow-files/chat-widget.js";
+  const widgetScriptUrl = "/embed/chat-widget.js";
 
   const embedCode = `<script
   defer

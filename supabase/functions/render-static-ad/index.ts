@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
 const CREATOMATE_API_KEY = Deno.env.get("CREATOMATE_API_KEY");
-const CREATOMATE_API_URL = "https://api.creatomate.com/v2/renders";
+const CREATOMATE_API_URL = "https://api.creatomate.com/v1/renders";
 
 // Template ID mapping for Creatomate templates
 const TEMPLATE_MAP: Record<string, Record<string, string>> = {
