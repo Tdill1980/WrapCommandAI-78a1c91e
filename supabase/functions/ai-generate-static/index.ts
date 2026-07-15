@@ -62,6 +62,7 @@ serve(async (req) => {
 
     // For carousels, we generate multiple slides
     const isCarousel = slideCount && slideCount > 1;
+    let lastImageError: string | null = null;
     
     // Build style instructions based on reference
     const styleInstructions = styleReference?.extractedStyle ? `
@@ -241,26 +242,31 @@ ${wrappedVehicleUrl ? `- IMPORTANT: Feature this wrapped vehicle prominently in 
 - Professional automotive industry aesthetic
 Ultra high resolution.`;
 
-      const imageResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
-          "Content-Type": "application/json",
+      // Native generateContent endpoint — the OpenAI-compat chat endpoint
+      // rejects image generation for this model ("use images.generate").
+      const imageResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: imagePrompt }] }],
+            generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+          }),
         },
-        body: JSON.stringify({
-          model: "gemini-2.5-flash-image",
-          messages: [
-            { role: "user", content: imagePrompt }
-          ],
-          modalities: ["image", "text"]
-        }),
-      });
+      );
       if (!imageResponse.ok) {
-        console.warn("Image generation failed:", imageResponse.status);
+        lastImageError = `HTTP ${imageResponse.status}: ${(await imageResponse.text()).slice(0, 500)}`;
+        console.warn("Image generation failed:", lastImageError);
         return null;
       }
       const imageData = await imageResponse.json();
-      return imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url || null;
+      const part = imageData.candidates?.[0]?.content?.parts?.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+      if (!part) {
+        lastImageError = `no image in response: ${JSON.stringify(imageData).slice(0, 300)}`;
+        return null;
+      }
+      return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
     };
 
     // ===== CAROUSEL: one image per slide + carousel-level caption =====
@@ -294,6 +300,7 @@ Ultra high resolution.`;
           // Back-compat fields (single-post consumers)
           imageUrl: slides[0]?.preview_url || null,
           caption: design.carousel_caption || headline,
+          image_error: lastImageError,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
