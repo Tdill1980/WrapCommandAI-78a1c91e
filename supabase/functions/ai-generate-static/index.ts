@@ -62,6 +62,7 @@ serve(async (req) => {
 
     // For carousels, we generate multiple slides
     const isCarousel = slideCount && slideCount > 1;
+    let lastImageError: string | null = null;
     
     // Build style instructions based on reference
     const styleInstructions = styleReference?.extractedStyle ? `
@@ -256,11 +257,14 @@ Ultra high resolution.`;
         }),
       });
       if (!imageResponse.ok) {
-        console.warn("Image generation failed:", imageResponse.status);
+        lastImageError = `HTTP ${imageResponse.status}: ${(await imageResponse.text()).slice(0, 500)}`;
+        console.warn("Image generation failed:", lastImageError);
         return null;
       }
       const imageData = await imageResponse.json();
-      return imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url || null;
+      const url = imageData.choices?.[0]?.message?.images?.[0]?.image_url?.url || null;
+      if (!url) lastImageError = `no image in response: ${JSON.stringify(imageData).slice(0, 500)}`;
+      return url;
     };
 
     // ===== CAROUSEL: one image per slide + carousel-level caption =====
@@ -294,6 +298,7 @@ Ultra high resolution.`;
           // Back-compat fields (single-post consumers)
           imageUrl: slides[0]?.preview_url || null,
           caption: design.carousel_caption || headline,
+          image_error: lastImageError,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
