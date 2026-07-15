@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { emailsPaused, pausedResponse } from "../_shared/email-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +82,7 @@ function emailHtml(step: number, q: any): string {
 }
 
 Deno.serve(async (req) => {
+  if (req.method !== "OPTIONS" && emailsPaused()) return pausedResponse(corsHeaders);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const secret = Deno.env.get("CRON_SECRET");

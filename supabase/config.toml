@@ -447,6 +447,27 @@ verify_jwt = false
 [functions.backfill-instagram-profiles]
 verify_jwt = false
 
+[functions.mailbox-stats]
+verify_jwt = false
+
+[functions.mailbox-quote-report]
+verify_jwt = false
+
+[functions.mailbox-quote-folder]
+verify_jwt = false
+
+[functions.mailbox-senders]
+verify_jwt = false
+
+[functions.klaviyo-backfill-quoters]
+verify_jwt = false
+
+[functions.quote-agent-draft]
+verify_jwt = false
+
+[functions.media-bridge]
+verify_jwt = false
+
 [functions.create-meta-ad]
 verify_jwt = false
 
