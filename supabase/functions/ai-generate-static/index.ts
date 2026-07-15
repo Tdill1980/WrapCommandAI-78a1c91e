@@ -248,7 +248,7 @@ Ultra high resolution.`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gemini-2.5-flash-image-preview",
+          model: "gemini-2.5-flash-image",
           messages: [
             { role: "user", content: imagePrompt }
           ],
