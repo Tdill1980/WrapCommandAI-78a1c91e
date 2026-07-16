@@ -45,8 +45,9 @@ const WPW_PRODUCTS: Record<string, { id: number; name: string; price: number; ty
   wicked_wild:   { id: 4181,  name: 'Wicked & Wild (by the yard)',   price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-wicked-wild-wrap-prints/' },
   bape_camo:     { id: 42809, name: 'Bape Camo (by the yard)',       price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-bape-camo/' },
   modern_trippy: { id: 52489, name: 'Modern & Trippy (by the yard)', price: 95.50, type: 'per_yard', url: 'https://weprintwraps.com/our-products/wrap-by-the-yard-modern-trippy/' },
-  custom_design: { id: 234,   name: 'Custom Vehicle Wrap Design',    price: 975,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
-  design_output: { id: 58160, name: 'Design Setup / File Output',    price: 199,   type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+  custom_design:   { id: 234,   name: 'Custom Vehicle Wrap Design',   price: 975,   type: 'flat',     url: 'https://weprintwraps.com/our-products/custom-wrap-design/' },
+  design_output:   { id: 289,   name: 'Design Setup / File Output',    price: 199,   type: 'flat',     url: 'https://weprintwraps.com/our-products/design-setupfile-output/' },
+  production_pack: { id: 71964, name: 'Production Pack',               price: 299,   type: 'flat',     url: 'https://weprintwraps.com/our-products/production-pack-299/' },
 };
 
 // Escalation routing — the WPW management team (problem tickets forward here)
@@ -142,7 +143,7 @@ const TOOLS = [
 VEHICLE WRAPS (per sqft): avery_wrap, 3m_wrap ($5.27), window_perf ($5.95), cut_avery ($6.32), cut_3m ($6.92), wall_wrap ($3.25)
 WRAP BY YARD ($95.50/yd): camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy
 FADE WRAPS (tiered): fade_wrap - needs side_length
-DESIGN (flat): custom_design ($975), design_hour ($90/hr), file_output ($199)
+DESIGN (flat): custom_design ($975), design_hour ($90/hr), file_output/design_output ($199), production_pack ($299)
 SAMPLES (flat): pantone ($42), camo_sample, marble_sample, wicked_sample ($26.50 each)
 PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xlarge ($899)`,
     input_schema: {
@@ -166,7 +167,7 @@ PACKS (flat): pack_small ($299), pack_medium ($499), pack_large ($699), pack_xla
   {
     name: "cmd_cart",
     description: `Generate a WooCommerce add-to-cart link so the customer can buy now. Use after you've given a price and the customer is ready to order (or asks "where do I buy / add to cart / checkout").
-product keys: avery_wrap, 3m_wrap, cut_avery, cut_3m, window_perf, wall_wrap, camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy, custom_design, design_output. Default: avery_wrap.
+product keys: avery_wrap, 3m_wrap, cut_avery, cut_3m, window_perf, wall_wrap, camo_carbon, metal_marble, wicked_wild, bape_camo, modern_trippy, custom_design, design_output, production_pack. Default: avery_wrap.
 quantity = sqft for per-sqft products, yards for by-the-yard, units for flat items.`,
     input_schema: { type: "object", properties: { product: { type: "string", description: "Product key from the list" }, quantity: { type: "number", description: "Qty (sqft/yards/units). Default 1." } }, required: [] }
   },
