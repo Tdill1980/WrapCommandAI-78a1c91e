@@ -32,9 +32,19 @@ jobs:
           fi
           echo "Applying $SQL_FILE"
           jq -n --rawfile sql "$SQL_FILE" '{query: $sql}' > /tmp/body.json
-          curl -fsS -X POST \
+          # Capture the response body so SQL errors are visible in the log
+          # (curl -f alone hides the API's error message).
+          raw=$(curl -sS -w $'\n%{http_code}' -X POST \
             "https://api.supabase.com/v1/projects/qxllysilzonrlyoaomce/database/query" \
             -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d @/tmp/body.json
+            -d @/tmp/body.json)
+          code=$(printf '%s' "$raw" | tail -n1)
+          body=$(printf '%s' "$raw" | sed '$d')
+          echo "HTTP $code"
+          echo "$body"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::Management API HTTP $code: $body"
+            exit 1
+          fi
           echo "Applied."

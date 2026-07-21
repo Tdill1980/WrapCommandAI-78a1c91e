@@ -43,22 +43,46 @@ CREATE TABLE IF NOT EXISTS content_atoms (
 
 ALTER TABLE content_atoms ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: the production DB does NOT have the get_user_organization_id()
+-- helper the Lovable-era policies used (verified: 42883 on apply), so these
+-- policies inline the same membership check against organization_members.
+
 DROP POLICY IF EXISTS "org can read atoms" ON content_atoms;
 CREATE POLICY "org can read atoms"
   ON content_atoms FOR SELECT
-  USING (organization_id = get_user_organization_id() OR organization_id IS NULL);
+  USING (
+    organization_id IS NULL
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "org can insert atoms" ON content_atoms;
 CREATE POLICY "org can insert atoms"
   ON content_atoms FOR INSERT
-  WITH CHECK (organization_id = get_user_organization_id() OR organization_id IS NULL);
+  WITH CHECK (
+    organization_id IS NULL
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "org can update atoms" ON content_atoms;
 CREATE POLICY "org can update atoms"
   ON content_atoms FOR UPDATE
-  USING (organization_id = get_user_organization_id() OR organization_id IS NULL);
+  USING (
+    organization_id IS NULL
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
+    )
+  );
 
 DROP POLICY IF EXISTS "org can delete atoms" ON content_atoms;
 CREATE POLICY "org can delete atoms"
   ON content_atoms FOR DELETE
-  USING (organization_id = get_user_organization_id() OR organization_id IS NULL);
+  USING (
+    organization_id IS NULL
+    OR organization_id IN (
+      SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
+    )
+  );

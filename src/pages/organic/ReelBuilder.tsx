@@ -118,7 +118,15 @@ export default function ReelBuilder() {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showReplaceModal, setShowReplaceModal] = useState(false);
   const [replaceClipId, setReplaceClipId] = useState<string | null>(null);
-  const [reelConcept, setReelConcept] = useState<string | null>(null);
+  // Seed the concept from ?concept=… — used by external launchers (e.g. the
+  // RestylePro Engine Room's series quick-launch chips).
+  const [reelConcept, setReelConcept] = useState<string | null>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("concept") || null;
+    } catch {
+      return null;
+    }
+  });
   const [isAutoProcessing, setIsAutoProcessing] = useState(false);
   const [showPostRenderModal, setShowPostRenderModal] = useState(false);
   const [savedVideoUrl, setSavedVideoUrl] = useState<string | null>(null);
