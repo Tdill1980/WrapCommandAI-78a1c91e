@@ -133,12 +133,34 @@ serve(async (req) => {
         .insert(tokenRecord);
     }
 
+    // A FAILED WRITE IS A FAILED CONNECTION. This used to log the error and
+    // carry on, then return success:true with "Connected to {page}" — so the
+    // UI reported a working connection while the token was discarded. It is
+    // not recoverable afterwards either: the short-lived code is spent, so the
+    // only fix is for the user to run the whole OAuth flow again, which they
+    // have no reason to do because they were told it worked.
+    //
+    // That is exactly what happened here — `instagram_tokens` did not exist in
+    // WrapCommand-Production, so every connection silently threw its token
+    // away while reporting success.
     if (dbResult.error) {
       console.error("❌ Database error:", dbResult.error);
-      // Don't fail - tokens are still valid, just not persisted
-    } else {
-      console.log("✅ Tokens saved to database");
+      return new Response(JSON.stringify({
+        success: false,
+        error: "token_not_persisted",
+        detail: dbResult.error.message,
+        message:
+          "Facebook authorised the connection, but the token could not be saved " +
+          "so the connection is NOT active. Nothing is connected. This is a " +
+          "server-side problem, not something you did — the fix is on our end, " +
+          "then run Connect again.",
+        page_name: pageName,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    console.log("✅ Tokens saved to database");
 
     // Return success response
     const response = {
